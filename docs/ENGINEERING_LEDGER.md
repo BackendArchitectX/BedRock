@@ -4,6 +4,26 @@
 
 BedRock is a Go 1.22 local-first orchestration prototype on `main`. The current vertical slice accepts a task, gathers bounded repository context, invokes a provider-neutral command adapter, applies bounded file changes while protecting pre-existing dirty paths and repository metadata, runs explicit verification commands, retries once by default with failure evidence, and rolls changes back when verification never succeeds.
 
+## 2026-09-20 CLI vertical-slice challenge pass
+
+### Work completed
+
+- Re-inspected current `main`, recent commits, repository tree, CI, README/ledger, and the prior Git-safety work rather than assuming earlier runs succeeded.
+- Confirmed the preceding Git-safety changes reached green CI on current history before selecting new work.
+- Challenged the backlog and kept the next objective narrow: prove the existing architecture end to end rather than add providers, agents, persistence, or orchestration abstractions.
+- Added a deterministic fake provider under `cmd/bedrock/testdata/fakeprovider` that consumes the real provider request protocol and emits one bounded file edit.
+- Extended CI to run `go test -race ./...`, build the real `bedrock` CLI and fake provider, initialize an isolated Git repository, execute `bedrock run`, verify the resulting file, and require the CLI to report `status: VERIFIED`.
+
+### Tests actually executed / evidence
+
+- GitHub Actions run `35474682080` on commit `1a210b3839e953625ca08bcb785bcbf69b740cd3` executed and **FAILED** at the format gate because the newly added fake-provider source was not gofmt-aligned. Vet, unit tests, race tests, and CLI smoke were therefore skipped in that run.
+- The exact gofmt diff was inspected and fixed in commit `f5bfa41b402e730f61d6e12b094f83832d001cdf`.
+- Follow-up run `35474699281` was queued when this note was written. Therefore race detection and the real CLI smoke remain **UNVERIFIED** in this pass until that run completes successfully.
+
+### Remaining risks / next action
+
+First inspect run `35474699281`. If it fails, repair the actual failing step before adding features. If it passes, the next highest-value challenge is failure-path CLI coverage: prove that a provider edit is rolled back when verification fails, and that the CLI exits non-zero while preserving pre-existing user work. Provider subprocesses and user-supplied verification commands still execute with local user permissions; no sandbox claim should be made.
+
 ## 2026-09-20 Git-safety hardening pass
 
 ### Work completed
