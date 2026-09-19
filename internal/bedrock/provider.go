@@ -51,7 +51,8 @@ func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (Prov
 
 	cmd := exec.CommandContext(runCtx, p.Bin, p.Args...)
 	cmd.Stdin = bytes.NewReader(payload)
-	cmd.Env, secretValues := providerEnvironment(p.EnvAllow)
+	env, secretValues := providerEnvironment(p.EnvAllow)
+	cmd.Env = env
 	var stdout, stderr cappedBuffer
 	stdout.limit = maxOutput
 	stderr.limit = 64 * 1024
