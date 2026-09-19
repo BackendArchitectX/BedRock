@@ -24,9 +24,7 @@ type CommandProvider struct {
 	EnvAllow  []string
 }
 
-func (p CommandProvider) Name() string {
-	return "command:" + p.Bin
-}
+func (p CommandProvider) Name() string { return "command:" + p.Bin }
 
 func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (ProviderResponse, error) {
 	if p.Bin == "" {
@@ -40,15 +38,12 @@ func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (Prov
 	if maxOutput <= 0 {
 		maxOutput = defaultProviderOutputLimit
 	}
-
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return ProviderResponse{}, fmt.Errorf("encode provider request: %w", err)
 	}
-
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
 	cmd := exec.CommandContext(runCtx, p.Bin, p.Args...)
 	cmd.Stdin = bytes.NewReader(payload)
 	env, secretValues := providerEnvironment(p.EnvAllow)
@@ -58,7 +53,6 @@ func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (Prov
 	stderr.limit = 64 * 1024
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-
 	if err := cmd.Run(); err != nil {
 		if runCtx.Err() != nil {
 			return ProviderResponse{}, fmt.Errorf("provider timed out: %w", runCtx.Err())
@@ -68,7 +62,6 @@ func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (Prov
 	if stdout.truncated {
 		return ProviderResponse{}, fmt.Errorf("provider response exceeded %d bytes", maxOutput)
 	}
-
 	var response ProviderResponse
 	dec := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
 	dec.DisallowUnknownFields()
@@ -89,14 +82,11 @@ func providerEnvironment(allow []string) ([]string, []string) {
 	allowed := make(map[string]struct{}, len(allow))
 	for _, name := range allow {
 		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
+		if name != "" {
+			allowed[strings.ToUpper(name)] = struct{}{}
 		}
-		allowed[strings.ToUpper(name)] = struct{}{}
 	}
-
-	var env []string
-	var secretValues []string
+	var env, secretValues []string
 	for _, entry := range os.Environ() {
 		key, value, ok := strings.Cut(entry, "=")
 		if !ok {
@@ -115,7 +105,6 @@ func providerEnvironment(allow []string) ([]string, []string) {
 	sort.Strings(env)
 	return env, secretValues
 }
-
 func safeProviderEnvironmentKey(key string) bool {
 	switch key {
 	case "PATH", "PATHEXT", "SYSTEMROOT", "COMSPEC", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE":
@@ -124,13 +113,11 @@ func safeProviderEnvironmentKey(key string) bool {
 		return false
 	}
 }
-
 func redactValues(text string, values []string) string {
 	for _, value := range values {
-		if value == "" {
-			continue
+		if value != "" {
+			text = strings.ReplaceAll(text, value, "[REDACTED]")
 		}
-		text = strings.ReplaceAll(text, value, "[REDACTED]")
 	}
 	return text
 }
@@ -160,6 +147,5 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 	_, _ = b.buf.Write(p)
 	return original, nil
 }
-
-func (b *cappedBuffer) Bytes() []byte { return b.buf.Bytes() }
+func (b *cappedBuffer) Bytes() []byte  { return b.buf.Bytes() }
 func (b *cappedBuffer) String() string { return b.buf.String() }
