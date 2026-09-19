@@ -51,13 +51,14 @@ func (v ShellVerifier) Verify(ctx context.Context, root string) ([]VerificationR
 				exitCode = exitErr.ExitCode()
 			}
 		}
-		result := VerificationResult{Command: command, ExitCode: exitCode, Output: redactValues(output.String(), secretValues)}
+		redactedCommand := redactValues(command, secretValues)
+		result := VerificationResult{Command: redactedCommand, ExitCode: exitCode, Output: redactValues(output.String(), secretValues)}
 		results = append(results, result)
 		if err != nil {
 			if errors.Is(ctxErr, context.DeadlineExceeded) {
-				return results, fmt.Errorf("verification command %q timed out: %w", command, ctxErr)
+				return results, fmt.Errorf("verification command %q timed out: %w", redactedCommand, ctxErr)
 			}
-			return results, fmt.Errorf("verification command %q failed with exit code %d", command, exitCode)
+			return results, fmt.Errorf("verification command %q failed with exit code %d", redactedCommand, exitCode)
 		}
 	}
 	return results, nil
