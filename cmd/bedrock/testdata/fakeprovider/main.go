@@ -11,12 +11,12 @@ type request struct {
 }
 
 type response struct {
-	Summary string `json:"summary"`
+	Summary string   `json:"summary"`
 	Changes []change `json:"changes"`
 }
 
 type change struct {
-	Path string `json:"path"`
+	Path    string `json:"path"`
 	Content string `json:"content"`
 }
 
