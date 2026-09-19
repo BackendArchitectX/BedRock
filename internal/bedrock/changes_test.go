@@ -6,6 +6,36 @@ import (
 	"testing"
 )
 
+func TestParsePorcelainV1ZPreservesUnusualPaths(t *testing.T) {
+	dirty, err := parsePorcelainV1Z([]byte(" M path with spaces.txt\x00??  leading-and-trailing .txt \x00"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"path with spaces.txt", " leading-and-trailing .txt "} {
+		if _, ok := dirty[path]; !ok {
+			t.Fatalf("dirty path %q was not preserved: %#v", path, dirty)
+		}
+	}
+}
+
+func TestParsePorcelainV1ZProtectsBothRenamePaths(t *testing.T) {
+	dirty, err := parsePorcelainV1Z([]byte("R  new name.txt\x00old name.txt\x00"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"new name.txt", "old name.txt"} {
+		if _, ok := dirty[path]; !ok {
+			t.Fatalf("rename path %q was not protected: %#v", path, dirty)
+		}
+	}
+}
+
+func TestParsePorcelainV1ZRejectsTruncatedRename(t *testing.T) {
+	if _, err := parsePorcelainV1Z([]byte("R  new.txt\x00")); err == nil {
+		t.Fatal("expected truncated rename record to fail closed")
+	}
+}
+
 func TestChangeSetRejectsTraversal(t *testing.T) {
 	root := t.TempDir()
 	set := NewChangeSet()
