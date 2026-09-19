@@ -1,0 +1,4 @@
+.bedrock/
+bin/
+dist/
+coverage.out
