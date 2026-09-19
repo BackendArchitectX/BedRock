@@ -4,6 +4,35 @@
 
 BedRock is a Go 1.22 local-first orchestration prototype on `main`. The current vertical slice accepts a task, gathers bounded repository context, invokes a provider-neutral command adapter, applies bounded file changes while protecting pre-existing dirty paths and repository metadata, runs explicit verification commands, retries once by default with failure evidence, and rolls changes back when verification never succeeds.
 
+## 2026-09-20 Git-safety hardening pass
+
+### Work completed
+
+- Re-inspected current `main`, recent commits, CI history, source, tests, README, and this ledger rather than assuming prior scheduled work happened.
+- Identified a concrete safety bug in `DirtyPaths`: the old parser treated each NUL-delimited token as a complete porcelain record. Git porcelain v1 `-z` emits a second source-path token for rename/copy records, so that source path was not protected. It also used `TrimSpace`, which can corrupt legitimate filenames containing leading/trailing spaces.
+- Replaced the ad-hoc parsing with a fail-closed `parsePorcelainV1Z` parser. It preserves path bytes represented as Go strings, protects both destination and source paths for rename/copy records, and rejects malformed/truncated records instead of silently weakening dirty-work protection.
+- Added deterministic regression tests for filenames containing spaces, both rename paths, and truncated rename records.
+
+### Tests actually executed / evidence
+
+- No local Go execution is claimed in this pass because repository access is through the connected GitHub API rather than a mounted checkout.
+- Before these changes, the latest completed `main` CI run inspected was `35473306842` on commit `2f407296eed0e352baecc047cc55f1a93026b605`, conclusion `success`.
+- GitHub Actions run `35473900283` started for source commit `fb7c97318c1bb1dece38a91ebff5d7da801fa399` and was still `in_progress` when inspected. The follow-up regression-test commit had not yet produced a visible run at that instant. Therefore the new parser and tests remain **UNVERIFIED** until CI executes on a commit containing both changes.
+
+### Remaining unverified / risks
+
+- Current Git-safety parser changes still need successful CI (`gofmt`, `go vet ./...`, `go test ./...`).
+- `go test -race ./...` has not yet been executed successfully.
+- No deterministic real-CLI end-to-end smoke scenario has been committed yet.
+- No real provider adapter end-to-end smoke test has executed; provider tests are deterministic/unit-level.
+- Windows/macOS behavior is unverified.
+- Provider execution is still a local subprocess rather than a hardened OS/container sandbox.
+- Verification commands are user-supplied shell commands and execute with the user's local permissions.
+
+### Next highest-value action
+
+First verify CI on current HEAD and repair any formatter/compiler/test failure. Once green, add a deterministic CLI integration test using a fake provider executable/script plus an isolated temporary Git repository. It should exercise the real `bedrock run` command, prove a small edit + explicit verification + evidence flow, and cover rollback on failed verification without a live LLM.
+
 ## 2026-09-20 integration / release-quality pass
 
 ### Work completed
@@ -29,13 +58,12 @@ No new source code was changed in this pass, so no new local test execution is c
 - No deterministic real-CLI end-to-end smoke scenario has been committed yet.
 - No real provider adapter end-to-end smoke test has executed; provider tests are deterministic/unit-level.
 - Windows/macOS behavior is unverified.
-- `DirtyPaths` parsing needs dedicated coverage for rename/copy porcelain records and unusual filenames before stronger Git-safety claims.
 - Provider execution is still a local subprocess rather than a hardened OS/container sandbox.
 - Verification commands are user-supplied shell commands and execute with the user's local permissions.
 
 ### Next highest-value action
 
-Prioritize a deterministic CLI integration test using a fake provider executable/script plus an isolated temporary Git repository. It should build/run the real `bedrock` command, prove a small edit + explicit verification + evidence flow, and cover rollback on a failed verification. Follow with dedicated `DirtyPaths` porcelain edge-case tests. Avoid adding provider SDKs or larger orchestration abstractions until this end-to-end boundary is proven.
+Prioritize a deterministic CLI integration test using a fake provider executable/script plus an isolated temporary Git repository. It should build/run the real `bedrock` command, prove a small edit + explicit verification + evidence flow, and cover rollback on a failed verification. Avoid adding provider SDKs or larger orchestration abstractions until this end-to-end boundary is proven.
 
 ## 2026-09-20 independent verification
 
@@ -70,8 +98,7 @@ A local clone/build/race-test attempt was made from the automation container, bu
 - No real provider adapter end-to-end smoke test has executed yet; provider tests are deterministic/unit-level.
 - CLI behavior has not yet been smoke-tested from a built binary in CI.
 - Windows/macOS behavior is unverified.
-- `DirtyPaths` parsing should receive dedicated tests for rename/copy porcelain records and unusual filenames before relying on it for stronger Git-safety guarantees.
 
 ### Next highest-value action
 
-Add independent Git-safety tests around `DirtyPaths` (including rename/copy and filenames with spaces), then add a deterministic fake-provider CLI integration test that builds/runs the real `bedrock` command and proves a small repository edit + verification + evidence flow without a live LLM.
+Add a deterministic fake-provider CLI integration test that builds/runs the real `bedrock` command and proves a small repository edit + verification + evidence flow without a live LLM.
