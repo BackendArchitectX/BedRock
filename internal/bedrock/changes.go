@@ -47,13 +47,32 @@ func DirtyPaths(root string) (map[string]struct{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("git status: %w", err)
 	}
-	for _, record := range strings.Split(string(out), "\x00") {
-		if len(record) < 4 {
+	return parsePorcelainV1Z(out)
+}
+
+func parsePorcelainV1Z(out []byte) (map[string]struct{}, error) {
+	dirty := map[string]struct{}{}
+	records := strings.Split(string(out), "\x00")
+	for i := 0; i < len(records); i++ {
+		record := records[i]
+		if record == "" {
 			continue
 		}
-		path := strings.TrimSpace(record[3:])
-		if path != "" {
-			dirty[filepath.ToSlash(path)] = struct{}{}
+		if len(record) < 4 || record[2] != ' ' {
+			return nil, fmt.Errorf("malformed git status record %q", record)
+		}
+		path := record[3:]
+		if path == "" {
+			return nil, errors.New("git status returned an empty path")
+		}
+		dirty[filepath.ToSlash(path)] = struct{}{}
+
+		if record[0] == 'R' || record[0] == 'C' || record[1] == 'R' || record[1] == 'C' {
+			i++
+			if i >= len(records) || records[i] == "" {
+				return nil, fmt.Errorf("git status rename/copy record for %q is missing its source path", path)
+			}
+			dirty[filepath.ToSlash(records[i])] = struct{}{}
 		}
 	}
 	return dirty, nil
