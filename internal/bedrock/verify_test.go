@@ -43,3 +43,34 @@ func TestShellVerifierRedactsSecretEnvironmentOutput(t *testing.T) {
 		t.Fatalf("redaction marker missing: %q", results[0].Output)
 	}
 }
+
+func TestShellVerifierRedactsSecretFromCommandAndError(t *testing.T) {
+	const secret = "bedrock-command-secret-7a31"
+	t.Setenv("BEDROCK_TEST_TOKEN", secret)
+
+	command := "echo " + secret
+	if shellCommand(context.Background(), "").Path == "cmd.exe" {
+		command += " && exit /b 1"
+	} else {
+		command += "; false"
+	}
+	results, err := (ShellVerifier{Commands: []string{command}}).Verify(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected verification failure")
+	}
+	if len(results) != 1 {
+		t.Fatalf("results=%d, want 1", len(results))
+	}
+	for label, text := range map[string]string{
+		"command evidence": results[0].Command,
+		"output evidence":  results[0].Output,
+		"returned error":   err.Error(),
+	} {
+		if strings.Contains(text, secret) {
+			t.Fatalf("secret leaked in %s: %q", label, text)
+		}
+		if !strings.Contains(text, "[REDACTED]") {
+			t.Fatalf("redaction marker missing from %s: %q", label, text)
+		}
+	}
+}
