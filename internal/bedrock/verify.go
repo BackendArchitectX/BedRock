@@ -2,6 +2,7 @@ package bedrock
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -37,6 +38,7 @@ func (v ShellVerifier) Verify(ctx context.Context, root string) ([]VerificationR
 		cmd.Stdout = &output
 		cmd.Stderr = &output
 		err := cmd.Run()
+		ctxErr := runCtx.Err()
 		cancel()
 
 		exitCode := 0
@@ -49,8 +51,8 @@ func (v ShellVerifier) Verify(ctx context.Context, root string) ([]VerificationR
 		result := VerificationResult{Command: command, ExitCode: exitCode, Output: output.String()}
 		results = append(results, result)
 		if err != nil {
-			if runCtx.Err() != nil {
-				return results, fmt.Errorf("verification command %q timed out: %w", command, runCtx.Err())
+			if errors.Is(ctxErr, context.DeadlineExceeded) {
+				return results, fmt.Errorf("verification command %q timed out: %w", command, ctxErr)
 			}
 			return results, fmt.Errorf("verification command %q failed with exit code %d", command, exitCode)
 		}
