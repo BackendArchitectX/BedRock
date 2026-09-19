@@ -43,7 +43,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "BedRock - local-first AI software-engineering orchestration")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
-	fmt.Fprintln(os.Stderr, "  bedrock run --repo . --task \"...\" --provider-bin <adapter> [--provider-arg <arg>] [--verify <command>]")
+	fmt.Fprintln(os.Stderr, "  bedrock run --repo . --task \"...\" --provider-bin <adapter> [--provider-arg <arg>] [--provider-env <NAME>] [--verify <command>]")
 }
 
 func run(args []string) error {
@@ -57,8 +57,10 @@ func run(args []string) error {
 	providerTimeout := fs.Duration("provider-timeout", 2*time.Minute, "provider invocation timeout")
 	verifyTimeout := fs.Duration("verify-timeout", 3*time.Minute, "timeout per verification command")
 	var providerArgs stringList
+	var providerEnv stringList
 	var verifyCommands stringList
 	fs.Var(&providerArgs, "provider-arg", "provider adapter argument; repeatable")
+	fs.Var(&providerEnv, "provider-env", "environment variable name to pass to the provider; repeatable")
 	fs.Var(&verifyCommands, "verify", "explicit verification shell command; repeatable")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -72,9 +74,10 @@ func run(args []string) error {
 
 	engine := bedrock.Engine{
 		Provider: bedrock.CommandProvider{
-			Bin:     *providerBin,
-			Args:    providerArgs,
-			Timeout: *providerTimeout,
+			Bin:      *providerBin,
+			Args:     providerArgs,
+			Timeout:  *providerTimeout,
+			EnvAllow: providerEnv,
 		},
 		Verifier: bedrock.ShellVerifier{
 			Commands: verifyCommands,
