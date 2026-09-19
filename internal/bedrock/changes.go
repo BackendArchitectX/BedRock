@@ -12,8 +12,8 @@ import (
 
 const (
 	maxChangesPerResponse = 32
-	maxChangeBytes         = 1024 * 1024
-	maxTotalChangeBytes    = 4 * 1024 * 1024
+	maxChangeBytes        = 1024 * 1024
+	maxTotalChangeBytes   = 4 * 1024 * 1024
 )
 
 type originalFile struct {
