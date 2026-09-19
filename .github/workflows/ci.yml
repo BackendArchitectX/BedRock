@@ -48,3 +48,27 @@ jobs:
             | tee "$RUNNER_TEMP/bedrock-smoke.log"
           test "$(cat "$repo/result.txt")" = good
           grep -q '^status: VERIFIED$' "$RUNNER_TEMP/bedrock-smoke.log"
+      - name: CLI failure rollback smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$RUNNER_TEMP/failure-repo"
+          mkdir "$repo"
+          git -C "$repo" init -q
+          printf 'keep me\n' > "$repo/user-work.txt"
+
+          set +e
+          "$RUNNER_TEMP/bedrock" run \
+            --repo "$repo" \
+            --task "write deterministic result" \
+            --provider-bin "$RUNNER_TEMP/fake-provider" \
+            --max-attempts 1 \
+            --verify 'false' \
+            > "$RUNNER_TEMP/bedrock-failure.log" 2>&1
+          exit_code=$?
+          set -e
+
+          test "$exit_code" -ne 0
+          test ! -e "$repo/result.txt"
+          test "$(cat "$repo/user-work.txt")" = 'keep me'
+          grep -q '^status: FAILED$' "$RUNNER_TEMP/bedrock-failure.log"
