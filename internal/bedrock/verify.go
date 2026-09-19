@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -27,6 +29,7 @@ func (v ShellVerifier) Verify(ctx context.Context, root string) ([]VerificationR
 	if maxOutput <= 0 {
 		maxOutput = 256 * 1024
 	}
+	secretValues := sensitiveEnvironmentValues()
 
 	results := make([]VerificationResult, 0, len(v.Commands))
 	for _, command := range v.Commands {
@@ -48,7 +51,7 @@ func (v ShellVerifier) Verify(ctx context.Context, root string) ([]VerificationR
 				exitCode = exitErr.ExitCode()
 			}
 		}
-		result := VerificationResult{Command: command, ExitCode: exitCode, Output: output.String()}
+		result := VerificationResult{Command: command, ExitCode: exitCode, Output: redactValues(output.String(), secretValues)}
 		results = append(results, result)
 		if err != nil {
 			if errors.Is(ctxErr, context.DeadlineExceeded) {
@@ -58,6 +61,27 @@ func (v ShellVerifier) Verify(ctx context.Context, root string) ([]VerificationR
 		}
 	}
 	return results, nil
+}
+
+func sensitiveEnvironmentValues() []string {
+	var values []string
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || value == "" || !sensitiveEnvironmentKey(strings.ToUpper(key)) {
+			continue
+		}
+		values = append(values, value)
+	}
+	return values
+}
+
+func sensitiveEnvironmentKey(key string) bool {
+	for _, marker := range []string{"TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "APIKEY", "PRIVATE_KEY", "ACCESS_KEY", "CREDENTIAL"} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func shellCommand(ctx context.Context, command string) *exec.Cmd {
