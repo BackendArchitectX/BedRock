@@ -22,6 +22,7 @@ jobs:
           files="$(gofmt -l .)"
           if [ -n "$files" ]; then
             printf 'Files requiring gofmt:\n%s\n' "$files"
+            gofmt -d $files
             exit 1
           fi
       - name: Vet
