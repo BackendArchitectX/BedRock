@@ -29,3 +29,22 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test ./...
+      - name: Race test
+        run: go test -race ./...
+      - name: CLI smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          go build -o "$RUNNER_TEMP/bedrock" ./cmd/bedrock
+          go build -o "$RUNNER_TEMP/fake-provider" ./cmd/bedrock/testdata/fakeprovider
+          repo="$RUNNER_TEMP/smoke-repo"
+          mkdir "$repo"
+          git -C "$repo" init -q
+          "$RUNNER_TEMP/bedrock" run \
+            --repo "$repo" \
+            --task "write deterministic result" \
+            --provider-bin "$RUNNER_TEMP/fake-provider" \
+            --verify 'test "$(cat result.txt)" = good' \
+            | tee "$RUNNER_TEMP/bedrock-smoke.log"
+          test "$(cat "$repo/result.txt")" = good
+          grep -q '^status: VERIFIED$' "$RUNNER_TEMP/bedrock-smoke.log"
