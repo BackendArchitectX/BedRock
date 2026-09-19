@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -18,6 +21,7 @@ type CommandProvider struct {
 	Args      []string
 	Timeout   time.Duration
 	MaxOutput int
+	EnvAllow  []string
 }
 
 func (p CommandProvider) Name() string {
@@ -47,6 +51,7 @@ func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (Prov
 
 	cmd := exec.CommandContext(runCtx, p.Bin, p.Args...)
 	cmd.Stdin = bytes.NewReader(payload)
+	cmd.Env, secretValues := providerEnvironment(p.EnvAllow)
 	var stdout, stderr cappedBuffer
 	stdout.limit = maxOutput
 	stderr.limit = 64 * 1024
@@ -57,7 +62,7 @@ func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (Prov
 		if runCtx.Err() != nil {
 			return ProviderResponse{}, fmt.Errorf("provider timed out: %w", runCtx.Err())
 		}
-		return ProviderResponse{}, fmt.Errorf("provider failed: %w: %s", err, stderr.String())
+		return ProviderResponse{}, fmt.Errorf("provider failed: %w: %s", err, redactValues(stderr.String(), secretValues))
 	}
 	if stdout.truncated {
 		return ProviderResponse{}, fmt.Errorf("provider response exceeded %d bytes", maxOutput)
@@ -77,6 +82,56 @@ func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (Prov
 		return ProviderResponse{}, fmt.Errorf("provider returned trailing data: %w", err)
 	}
 	return response, nil
+}
+
+func providerEnvironment(allow []string) ([]string, []string) {
+	allowed := make(map[string]struct{}, len(allow))
+	for _, name := range allow {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		allowed[strings.ToUpper(name)] = struct{}{}
+	}
+
+	var env []string
+	var secretValues []string
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		upper := strings.ToUpper(key)
+		_, explicitlyAllowed := allowed[upper]
+		if !safeProviderEnvironmentKey(upper) && !explicitlyAllowed {
+			continue
+		}
+		env = append(env, entry)
+		if explicitlyAllowed && value != "" {
+			secretValues = append(secretValues, value)
+		}
+	}
+	sort.Strings(env)
+	return env, secretValues
+}
+
+func safeProviderEnvironmentKey(key string) bool {
+	switch key {
+	case "PATH", "PATHEXT", "SYSTEMROOT", "COMSPEC", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE":
+		return true
+	default:
+		return false
+	}
+}
+
+func redactValues(text string, values []string) string {
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		text = strings.ReplaceAll(text, value, "[REDACTED]")
+	}
+	return text
 }
 
 type cappedBuffer struct {
