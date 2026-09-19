@@ -17,10 +17,11 @@ No external Go dependencies are currently required.
 ```sh
 go build ./cmd/bedrock
 go test ./...
+go test -race ./...
 go vet ./...
 ```
 
-CI also requires the repository to be `gofmt` clean.
+CI requires the repository to be `gofmt` clean and also builds the real CLI plus a deterministic fake provider. It exercises both a successful verified edit and a failed-verification rollback that preserves pre-existing user work.
 
 ## Run
 
@@ -56,7 +57,7 @@ bedrock run \
   --verify "go test ./..."
 ```
 
-Explicitly passed environment values are redacted from provider failure stderr. Do not pass secrets through `--provider-arg`, task text, source files, or verification commands.
+Explicitly passed environment values are redacted from provider failure stderr. Verification output stored in run evidence also redacts values from ambient environment variables whose names look credential-bearing (for example tokens, passwords, API keys, private/access keys, and credentials). This is defense in depth, not a guarantee that arbitrary secrets embedded in files, task text, command arguments, or unrelated environment names cannot appear in output. Do not pass secrets through `--provider-arg`, task text, source files, or verification commands.
 
 ## Provider adapter contract
 
@@ -85,13 +86,14 @@ Unknown response fields and trailing JSON/data are rejected. A response is limit
 
 ## Safety behavior currently implemented
 
-- Pre-existing Git dirty paths are protected from BedRock writes.
+- Pre-existing Git dirty paths are protected from BedRock writes, including both source and destination paths represented by Git porcelain rename/copy records.
 - Absolute paths, repository traversal, `.git`, `.bedrock`, symlink targets/components, and non-regular replacement targets are rejected.
 - Proposed changes are bounded by file count, per-file bytes, and total bytes.
 - Verification is explicit; no verification commands means the run is reported `UNVERIFIED`, not `VERIFIED`.
 - Failed final verification rolls back files changed by the run.
 - Run evidence is stored outside the repository under the operating-system user cache directory.
 - Provider stdout/stderr is size bounded; provider and verification commands have timeouts.
+- Credential-like ambient environment values are redacted from persisted verification output.
 
 Repository content is context data, not trusted BedRock control instructions. A provider may still produce unsafe changes, so verification commands and code review remain important trust boundaries.
 
@@ -100,8 +102,8 @@ Repository content is context data, not trusted BedRock control instructions. A 
 - There is no built-in OpenAI, Anthropic, or local-model adapter yet; an external adapter executable is required.
 - Provider execution is a local subprocess, not a hardened OS/container sandbox.
 - Verification commands are intentionally user-supplied shell commands and therefore execute with the user's local permissions.
-- No real provider end-to-end smoke scenario has been committed yet.
+- Deterministic fake-provider end-to-end CLI scenarios are covered in CI, but no live model-provider end-to-end scenario is claimed.
 - Windows and macOS behavior has not been independently verified.
-- Race testing and stronger Git porcelain edge-case coverage remain outstanding.
+- Secret redaction is heuristic and should not be treated as a substitute for avoiding secrets in command output or repository context.
 
 See `docs/ENGINEERING_LEDGER.md` for current verification evidence, known risks, and the next engineering target.
