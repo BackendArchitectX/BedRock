@@ -1,6 +1,7 @@
 package bedrock
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -12,8 +13,8 @@ import (
 
 const (
 	maxChangesPerResponse = 32
-	maxChangeBytes        = 1024 * 1024
-	maxTotalChangeBytes   = 4 * 1024 * 1024
+	maxChangeBytes         = 1024 * 1024
+	maxTotalChangeBytes    = 4 * 1024 * 1024
 )
 
 type originalFile struct {
@@ -25,12 +26,14 @@ type originalFile struct {
 type ChangeSet struct {
 	originals map[string]originalFile
 	changed   map[string]struct{}
+	written   map[string][]byte
 }
 
 func NewChangeSet() *ChangeSet {
 	return &ChangeSet{
 		originals: map[string]originalFile{},
 		changed:   map[string]struct{}{},
+		written:   map[string][]byte{},
 	}
 }
 
@@ -57,9 +60,6 @@ func DirtyPaths(root string) (map[string]struct{}, error) {
 	prefix := filepath.ToSlash(strings.TrimSuffix(string(prefixOut), "\n"))
 	prefix = strings.TrimSuffix(prefix, "\r")
 
-	// Porcelain v1 reports paths relative to the worktree root even when Git is
-	// invoked from a nested directory. Restrict status to the requested subtree,
-	// then translate those paths into ChangeSet's root-relative coordinate space.
 	cmd := exec.Command("git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
 	out, err := cmd.Output()
 	if err != nil {
@@ -187,6 +187,7 @@ func (c *ChangeSet) Apply(root string, changes []FileChange, protected map[strin
 			return fmt.Errorf("write %q: %w", p.rel, err)
 		}
 		c.changed[p.rel] = struct{}{}
+		c.written[p.rel] = append([]byte(nil), p.content...)
 	}
 	return nil
 }
@@ -207,6 +208,22 @@ func (c *ChangeSet) Rollback(root string) error {
 		if err != nil {
 			failures = append(failures, err.Error())
 			continue
+		}
+		expected, written := c.written[rel]
+		if written {
+			current, readErr := os.ReadFile(target)
+			if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+				failures = append(failures, fmt.Sprintf("inspect current %s: %v", rel, readErr))
+				continue
+			}
+			if readErr == nil && !bytes.Equal(current, expected) {
+				failures = append(failures, fmt.Sprintf("refusing to rollback %s because it changed after BedRock wrote it", rel))
+				continue
+			}
+			if errors.Is(readErr, os.ErrNotExist) && original.existed {
+				failures = append(failures, fmt.Sprintf("refusing to recreate %s because it was removed after BedRock wrote it", rel))
+				continue
+			}
 		}
 		if !original.existed {
 			if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
