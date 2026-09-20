@@ -163,6 +163,27 @@ jobs:
           test ! -e "$partial/bin/stale"
           test ! -e "$partial/repository/stale"
           test "$(cat "$partial/repository/result.txt")" = good
+
+          # A failure during provider execution happens after workspace ownership,
+          # repository initialization, and builds. A clean rerun must recover
+          # without carrying generated state forward or touching unrelated state.
+          provider_failure="$RUNNER_TEMP/provider-failure-demo"
+          mkdir "$provider_failure"
+          printf 'BedRock demo workspace\n' > "$provider_failure/.bedrock-demo-owned"
+          printf 'preserve me\n' > "$provider_failure/user.txt"
+          set +e
+          BEDROCK_FAKE_PROVIDER_FAIL=1 BEDROCK_DEMO_DIR="$provider_failure" go run ./scripts/demo.go > "$RUNNER_TEMP/provider-failure.log" 2>&1
+          provider_failure_exit=$?
+          set -e
+          test "$provider_failure_exit" -ne 0
+          test "$(cat "$provider_failure/user.txt")" = 'preserve me'
+          test ! -e "$provider_failure/repository/result.txt"
+          grep -q 'injected fake provider failure' "$RUNNER_TEMP/provider-failure.log"
+          BEDROCK_DEMO_DIR="$provider_failure" go run ./scripts/demo.go > "$RUNNER_TEMP/provider-recovery.log" 2>&1
+          grep -q '^status: VERIFIED$' "$RUNNER_TEMP/provider-recovery.log"
+          grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/provider-recovery.log"
+          test "$(cat "$provider_failure/user.txt")" = 'preserve me'
+          test "$(cat "$provider_failure/repository/result.txt")" = good
       - name: CLI failure rollback smoke
         shell: bash
         run: |
