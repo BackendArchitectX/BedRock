@@ -82,26 +82,13 @@ func TestShellVerifierRedactsSecretFromCommandAndError(t *testing.T) {
 
 func TestShellVerifierPreservesCancellationCause(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	command := "sleep 30"
-	if shellCommand(context.Background(), "").Path == "cmd.exe" {
-		command = "ping -n 30 127.0.0.1 >NUL"
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := (ShellVerifier{Commands: []string{command}, Timeout: time.Minute}).Verify(ctx, t.TempDir())
-		done <- err
-	}()
-
-	time.Sleep(100 * time.Millisecond)
 	cancel()
 
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("verify error=%v, want context cancellation", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("verifier did not stop after cancellation")
+	results, err := (ShellVerifier{Commands: []string{"bedrock-command-must-not-complete"}, Timeout: time.Minute}).Verify(ctx, t.TempDir())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("verify error=%v, want context cancellation", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("results=%d, want 1", len(results))
 	}
 }
