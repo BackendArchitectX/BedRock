@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/BackendArchitectX/BedRock/internal/bedrock"
@@ -26,7 +28,9 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "run":
-		if err := run(os.Args[2:]); err != nil {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := run(ctx, os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "bedrock:", err)
 			os.Exit(1)
 		}
@@ -46,7 +50,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  bedrock run --repo . --task \"...\" --provider-bin <adapter> [--provider-arg <arg>] [--provider-env <NAME>] [--verify <command>]")
 }
 
-func run(args []string) error {
+func run(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	repo := fs.String("repo", ".", "repository root")
 	task := fs.String("task", "", "engineering task")
@@ -88,7 +92,7 @@ func run(args []string) error {
 		ContextMaxBytes: *contextBytes,
 	}
 
-	result, err := engine.Run(context.Background(), *repo, *task)
+	result, err := engine.Run(ctx, *repo, *task)
 	fmt.Printf("run: %s\n", result.Evidence.RunID)
 	fmt.Printf("status: %s\n", result.Evidence.Status)
 	fmt.Printf("provider: %s\n", result.Evidence.Provider)
