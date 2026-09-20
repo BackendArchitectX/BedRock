@@ -62,9 +62,6 @@ func run() error {
 	if err := rejectSymlinkComponents(work); err != nil {
 		return err
 	}
-	// Check the containing-workspace direction first so equality retains the
-	// established checkout-protection diagnostic. A strict child still falls
-	// through to the inside-checkout guard below.
 	if containsPath(work, root) {
 		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it contains the BedRock checkout %s", work, root)
 	}
@@ -146,10 +143,16 @@ func run() error {
 	if runtime.GOOS == "windows" {
 		verify = "for /f %i in (result.txt) do @if \"%i\"==\"good\" (exit /b 0) else (exit /b 1)"
 	}
+	// Test-only fault injection exercises recovery after provider output exists but
+	// verification rejects it. Ordinary launcher behavior is unchanged.
+	if os.Getenv("BEDROCK_DEMO_VERIFY_FAIL") == "1" {
+		if runtime.GOOS == "windows" {
+			verify = "exit /b 1"
+		} else {
+			verify = "false"
+		}
+	}
 	runArgs := []string{"run", "--repo", repo, "--task", "write deterministic result", "--provider-bin", provider, "--verify", verify}
-	// The deterministic provider's failure hook is test-only. Explicitly opt it
-	// into the provider environment so CommandProvider's secure environment
-	// allowlist remains effective for every ordinary launcher run.
 	if os.Getenv("BEDROCK_FAKE_PROVIDER_FAIL") == "1" {
 		runArgs = append(runArgs, "--provider-env", "BEDROCK_FAKE_PROVIDER_FAIL")
 	}
