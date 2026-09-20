@@ -45,8 +45,6 @@ jobs:
           test ! -e "$old_go_work"
           grep -q 'Go 1.22+ is required; found go1.21.13' "$RUNNER_TEMP/old-go.log"
 
-          # Missing Git must likewise fail before any workspace mutation. Keep only a
-          # Go shim on PATH so the version check succeeds while git is unavailable.
           no_git_bin="$RUNNER_TEMP/no-git-bin"
           no_git_work="$RUNNER_TEMP/no-git-workspace"
           mkdir "$no_git_bin"
@@ -84,12 +82,9 @@ jobs:
           test "$(cat "$RUNNER_TEMP/bedrock-demo/repository/result.txt")" = good
           grep -q '^status: VERIFIED$' "$RUNNER_TEMP/bedrock-demo.log"
           grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo.log"
-          # Rerun the exact canonical launcher to prove ordinary stale demo state is replaced safely.
           BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" go run ./scripts/demo.go > "$RUNNER_TEMP/bedrock-demo-rerun.log"
           grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo-rerun.log"
 
-          # A caller-selected existing directory must never be recursively cleaned
-          # unless a previous BedRock demo run explicitly marked it as owned.
           foreign="$RUNNER_TEMP/foreign-workspace"
           mkdir "$foreign"
           printf 'preserve me\n' > "$foreign/user.txt"
@@ -101,8 +96,6 @@ jobs:
           test "$(cat "$foreign/user.txt")" = 'preserve me'
           grep -q 'refusing to reuse' "$RUNNER_TEMP/foreign.log"
 
-          # A symlink workspace root must never inherit ownership from or clean its
-          # target, even when the target carries a valid BedRock ownership marker.
           symlink_target="$RUNNER_TEMP/symlink-target"
           symlink_work="$RUNNER_TEMP/symlink-workspace"
           mkdir "$symlink_target"
@@ -117,8 +110,33 @@ jobs:
           test "$(cat "$symlink_target/user.txt")" = 'preserve me'
           grep -q 'refusing to use symlink' "$RUNNER_TEMP/symlink.log"
 
-          # Even a forged ownership marker must not allow the launcher to treat the
-          # checkout itself as disposable demo state.
+          # A workspace beneath a symlinked ancestor must not inherit ownership
+          # from or clean the physical target reached through that ancestor.
+          ancestor_target="$RUNNER_TEMP/external-parent"
+          ancestor_alias="$RUNNER_TEMP/aliased-parent"
+          ancestor_work="$ancestor_alias/demo"
+          mkdir -p "$ancestor_target/demo"
+          printf 'BedRock demo workspace\n' > "$ancestor_target/demo/.bedrock-demo-owned"
+          printf 'preserve me\n' > "$ancestor_target/demo/user.txt"
+          ln -s "$ancestor_target" "$ancestor_alias"
+          set +e
+          BEDROCK_DEMO_DIR="$ancestor_work" go run ./scripts/demo.go > "$RUNNER_TEMP/ancestor-symlink.log" 2>&1
+          ancestor_exit=$?
+          set -e
+          test "$ancestor_exit" -ne 0
+          test "$(cat "$ancestor_target/demo/user.txt")" = 'preserve me'
+          grep -q 'path component .* is a symlink' "$RUNNER_TEMP/ancestor-symlink.log"
+
+          # A child of the checkout is also never disposable launcher state.
+          checkout_child="$GITHUB_WORKSPACE/.bedrock-demo-test"
+          set +e
+          BEDROCK_DEMO_DIR="$checkout_child" go run ./scripts/demo.go > "$RUNNER_TEMP/checkout-child.log" 2>&1
+          checkout_child_exit=$?
+          set -e
+          test "$checkout_child_exit" -ne 0
+          test ! -e "$checkout_child"
+          grep -q 'is inside the BedRock checkout' "$RUNNER_TEMP/checkout-child.log"
+
           printf 'BedRock demo workspace\n' > .bedrock-demo-owned
           trap 'rm -f .bedrock-demo-owned' EXIT
           set +e
@@ -130,6 +148,21 @@ jobs:
           grep -q 'contains the BedRock checkout' "$RUNNER_TEMP/checkout-workspace.log"
           rm -f .bedrock-demo-owned
           trap - EXIT
+
+          # Re-running after an interrupted owned launch may replace only the
+          # launcher-owned bin/repository children, never unrelated user state.
+          partial="$RUNNER_TEMP/partial-bedrock-demo"
+          mkdir -p "$partial/bin" "$partial/repository"
+          printf 'BedRock demo workspace\n' > "$partial/.bedrock-demo-owned"
+          printf 'preserve me\n' > "$partial/user.txt"
+          printf 'stale\n' > "$partial/bin/stale"
+          printf 'stale\n' > "$partial/repository/stale"
+          BEDROCK_DEMO_DIR="$partial" go run ./scripts/demo.go > "$RUNNER_TEMP/partial-recovery.log" 2>&1
+          grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/partial-recovery.log"
+          test "$(cat "$partial/user.txt")" = 'preserve me'
+          test ! -e "$partial/bin/stale"
+          test ! -e "$partial/repository/stale"
+          test "$(cat "$partial/repository/result.txt")" = good
       - name: CLI failure rollback smoke
         shell: bash
         run: |
@@ -178,13 +211,10 @@ jobs:
           if (-not ($log -match '^status: VERIFIED$')) { throw 'missing VERIFIED status' }
           if (-not ($log -match '^BedRock demo: READY$')) { throw 'missing READY status' }
 
-          # Re-run the same canonical command to prove idempotent owned-workspace cleanup on Windows.
           $rerun = @(go run ./scripts/demo.go 2>&1)
           if ($LASTEXITCODE -ne 0) { throw "canonical launcher rerun failed with exit code $LASTEXITCODE`n$($rerun -join "`n")" }
           if (-not ($rerun -match '^BedRock demo: READY$')) { throw 'rerun missing READY status' }
 
-          # The ownership guard must preserve a foreign Windows workspace too. Use Start-Process
-          # so the intentionally non-zero native exit is data to assert, not a PowerShell error.
           $foreign = Join-Path $env:RUNNER_TEMP 'foreign-workspace-windows'
           New-Item -ItemType Directory -Path $foreign | Out-Null
           Set-Content -Path (Join-Path $foreign 'user.txt') -Value 'preserve me' -NoNewline
@@ -197,7 +227,6 @@ jobs:
           if ((Get-Content (Join-Path $foreign 'user.txt') -Raw) -ne 'preserve me') { throw 'foreign sentinel was modified' }
           if (-not ($foreignLog -match 'refusing to reuse')) { throw "missing foreign-workspace refusal diagnostic`n$($foreignLog -join "`n")" }
 
-          # A forged marker in the checkout must not make the checkout disposable.
           $marker = Join-Path $env:GITHUB_WORKSPACE '.bedrock-demo-owned'
           Set-Content -Path $marker -Value 'BedRock demo workspace' -NoNewline:$false
           try {
