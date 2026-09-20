@@ -1,0 +1,39 @@
+name: Demo path safety
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  symlinked-ancestor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: false
+      - name: Reject workspace beneath symlinked ancestor without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$RUNNER_TEMP/external-parent"
+          alias="$RUNNER_TEMP/aliased-parent"
+          work="$alias/demo"
+          mkdir -p "$target/demo"
+          printf 'BedRock demo workspace\n' > "$target/demo/.bedrock-demo-owned"
+          printf 'preserve me\n' > "$target/demo/user.txt"
+          ln -s "$target" "$alias"
+
+          set +e
+          BEDROCK_DEMO_DIR="$work" go run ./scripts/demo.go > "$RUNNER_TEMP/ancestor-symlink.log" 2>&1
+          exit_code=$?
+          set -e
+
+          test "$exit_code" -ne 0
+          test "$(cat "$target/demo/user.txt")" = 'preserve me'
+          grep -q 'path component .* is a symlink' "$RUNNER_TEMP/ancestor-symlink.log"
