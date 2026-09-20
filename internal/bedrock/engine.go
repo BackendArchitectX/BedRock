@@ -86,6 +86,7 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 
 	finish := func(runErr error) (RunResult, error) {
 		evidence.ChangedPaths = changes.ChangedPaths()
+		evidence.DiffHash = changes.DiffHash()
 		evidence.LastFailure = failure
 		path, saveErr := SaveEvidence(root, evidence)
 		if saveErr != nil {
