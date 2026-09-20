@@ -113,7 +113,8 @@ jobs:
           New-Item -ItemType Directory -Path $foreign | Out-Null
           Set-Content -Path (Join-Path $foreign 'user.txt') -Value 'preserve me' -NoNewline
           $env:BEDROCK_DEMO_DIR = $foreign
-          $foreignLog = @(go run ./scripts/demo.go 2>&1)
-          if ($LASTEXITCODE -eq 0) { throw 'launcher unexpectedly accepted foreign workspace' }
+          $foreignLog = @(& go run ./scripts/demo.go 2>&1)
+          $foreignExit = $LASTEXITCODE
+          if ($foreignExit -eq 0) { throw 'launcher unexpectedly accepted foreign workspace' }
           if ((Get-Content (Join-Path $foreign 'user.txt') -Raw) -ne 'preserve me') { throw 'foreign sentinel was modified' }
-          if (-not ($foreignLog -match 'refusing to reuse')) { throw 'missing foreign-workspace refusal diagnostic' }
+          if (-not ($foreignLog -match 'refusing to reuse')) { throw "missing foreign-workspace refusal diagnostic`n$($foreignLog -join "`n")" }
