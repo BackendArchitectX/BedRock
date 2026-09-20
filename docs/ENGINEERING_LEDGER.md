@@ -17,10 +17,10 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 ### Verified baseline
 
 - Reconciled against current rewritten `origin/main`; superseded pre-rewrite hashes remain superseded.
-- Exact pre-ledger HEAD `39399d6597ba36b4a506579b343518b8d967ed52` (`docs: record consolidated launcher verification`) completed GitHub Actions CI run `35512489763` successfully. This supersedes the earlier pre-ledger baseline reference to `42da4d4bf6bd901088a9a7b0c08adbfd5cce043f`.
-- Linux CI actually executed and passed prerequisite-failure non-mutation, format, `go vet ./...`, `go test ./...`, `go test -race ./...`, canonical one-step start/rerun, foreign-workspace refusal, direct and ancestor symlink-workspace refusal, checkout protection, interrupted-owned-workspace recovery, and CLI failure/rollback smoke.
-- Windows CI actually executed and passed the canonical one-step launcher, rerun/idempotency, foreign-workspace refusal, and checkout protection.
-- The formerly separate Demo path safety workflow was removed only after its unique ancestor-symlink and partial-recovery assertions were consolidated into primary CI; commit `2c7a1e5e8a4774e31c5a271651acaf1ecb85f6a9` had also completed the old dedicated workflow successfully before removal.
+- Exact product/test HEAD `0559c9e167ffa519223167f89d32d58d38c7d317` (`test(demo): prove recovery after init failure`) completed GitHub Actions CI run `35514963854` successfully.
+- Linux CI actually executed and passed prerequisite-failure non-mutation, format, `go vet ./...`, `go test ./...`, `go test -race ./...`, canonical one-step start/rerun and consolidated launcher safety/recovery tests, and CLI failure/rollback smoke.
+- Windows CI actually executed and passed the canonical one-step launcher acceptance.
+- The new init-failure regression injects a failing `git init` after workspace ownership is established, verifies a useful failure, then reruns normally and requires `READY`, the expected verified result, and preservation of unrelated caller state.
 - Windows race detection is not executed because ThreadSanitizer could not initialize in the independently isolated local Windows environment; Linux CI remains the authoritative race gate.
 - Current reachable commits map to the `BackendArchitectX` GitHub account/noreply identity; superseded prohibited author history is not treated as active.
 
@@ -28,13 +28,13 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 
 The deterministic prototype has one documented normal launcher, `go run ./scripts/demo.go`. README and CI use the same command. The launcher checks required tools/version before workspace mutation, requires an exact regular-file ownership marker for reuse, refuses dangerous roots, checkout-contained paths, direct symlink roots, and symlinked path components, rebuilds the CLI/provider, recreates only owned demo children, initializes the demo repository, waits for the real BedRock run and verification to finish, checks `result.txt`, and only then prints `READY`.
 
-Current automated evidence covers rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, direct and ancestor symlink-workspace refusal, interrupted owned-workspace recovery, Linux success/failure orchestration, and Windows launcher execution. The deterministic default prototype therefore satisfies the current one-step-start acceptance gate. This does not imply live-model, server, web UI, or sandbox readiness.
+Current automated evidence covers rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, direct and ancestor symlink-workspace refusal, interrupted owned-workspace recovery, recovery after an injected repository-initialization failure, Linux success/failure orchestration, and Windows launcher execution. The deterministic default prototype therefore satisfies the current one-step-start acceptance gate. This does not imply live-model, server, web UI, or sandbox readiness.
 
 ### Remaining risks / next action
 
-Before any new edit, fetch current `origin/main` because multiple writers may advance it. Launcher path-safety coverage is now consolidated in primary CI; do not recreate the removed duplicate workflow.
+Before any new edit, fetch current `origin/main` because multiple writers may advance it. Launcher path-safety coverage is consolidated in primary CI; do not recreate the removed duplicate workflow.
 
-Prioritize clean-checkout/release validation and additional failure-path evidence over feature growth. In particular, independently challenge failures after workspace ownership is established but before `READY` (build/init/provider/verification interruption) and prove rerun recovery preserves unrelated state. Keep prerequisite diagnostics useful and fail before mutation whenever the prerequisite can be checked up front.
+Next independently challenge a failure later than repository initialization—preferably provider execution or verification—then prove rerun recovery preserves unrelated caller state and does not carry stale generated state into the successful run. Keep prerequisite diagnostics useful and fail before mutation whenever the prerequisite can be checked up front.
 
 Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made. Live-provider behavior and broader OS/environment combinations remain outside the deterministic demo proof.
 
