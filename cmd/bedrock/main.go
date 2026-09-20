@@ -115,6 +115,9 @@ func configuredProvider(bin string, args, env []string, endpoint, model, apiKeyE
 		return nil, fmt.Errorf("--provider-bin and --provider-endpoint are mutually exclusive")
 	}
 	if endpoint != "" {
+		if len(args) != 0 || len(env) != 0 {
+			return nil, fmt.Errorf("--provider-arg and --provider-env require --provider-bin")
+		}
 		if model == "" {
 			return nil, fmt.Errorf("--provider-model is required with --provider-endpoint")
 		}
