@@ -3,6 +3,7 @@ package bedrock
 import (
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func TestShellVerifierRedactsSecretEnvironmentOutput(t *testing.T) {
 	t.Setenv("BEDROCK_TEST_API_KEY", secret)
 
 	var command string
-	if shellCommand(context.Background(), "").Path == "cmd.exe" {
+	if runtime.GOOS == "windows" {
 		command = "echo %BEDROCK_TEST_API_KEY%"
 	} else {
 		command = "printf '%s' \"$BEDROCK_TEST_API_KEY\""
@@ -54,7 +55,7 @@ func TestShellVerifierRedactsSecretFromCommandAndError(t *testing.T) {
 	t.Setenv("BEDROCK_TEST_TOKEN", secret)
 
 	command := "echo " + secret
-	if shellCommand(context.Background(), "").Path == "cmd.exe" {
+	if runtime.GOOS == "windows" {
 		command += " && exit /b 1"
 	} else {
 		command += "; false"
