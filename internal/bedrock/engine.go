@@ -56,6 +56,16 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 	}
 	sort.Strings(protectedPaths)
 
+	var verificationCommands []string
+	switch verifier := e.Verifier.(type) {
+	case ShellVerifier:
+		verificationCommands = append([]string(nil), verifier.Commands...)
+	case *ShellVerifier:
+		if verifier != nil {
+			verificationCommands = append([]string(nil), verifier.Commands...)
+		}
+	}
+
 	runID := "run-" + time.Now().UTC().Format("20060102T150405.000000000Z")
 	evidence := Evidence{
 		RunID:         runID,
@@ -102,11 +112,12 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 		}
 
 		response, err := e.Provider.Execute(ctx, ProviderRequest{
-			Task:           task,
-			Attempt:        attempt,
-			Failure:        failure,
-			Files:          files,
-			ProtectedPaths: protectedPaths,
+			Task:                 task,
+			Attempt:              attempt,
+			Failure:              failure,
+			Files:                files,
+			ProtectedPaths:       protectedPaths,
+			VerificationCommands: verificationCommands,
 		})
 		if err != nil {
 			failure = err.Error()
