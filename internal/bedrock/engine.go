@@ -116,8 +116,9 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 			failure = err.Error()
 			return finish(rollback(err))
 		}
-		for _, path := range changes.ChangedPaths() {
-			delete(currentProtected, path)
+		if err := changes.ExcludeOwnWrites(root, currentProtected); err != nil {
+			failure = err.Error()
+			return finish(rollback(err))
 		}
 		if err := changes.Apply(root, response.Changes, currentProtected); err != nil {
 			failure = err.Error()
