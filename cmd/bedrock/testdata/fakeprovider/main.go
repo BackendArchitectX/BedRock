@@ -30,6 +30,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "missing task")
 		os.Exit(2)
 	}
+	if os.Getenv("BEDROCK_FAKE_PROVIDER_FAIL") == "1" {
+		fmt.Fprintln(os.Stderr, "injected fake provider failure")
+		os.Exit(42)
+	}
 	if err := json.NewEncoder(os.Stdout).Encode(response{
 		Summary: "deterministic smoke edit",
 		Changes: []change{{Path: "result.txt", Content: "good\n"}},
