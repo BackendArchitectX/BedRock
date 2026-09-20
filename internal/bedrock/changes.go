@@ -112,6 +112,29 @@ func parsePorcelainV1Z(out []byte) (map[string]struct{}, error) {
 	return dirty, nil
 }
 
+func (c *ChangeSet) ExcludeOwnWrites(root string, protected map[string]struct{}) error {
+	for rel, expected := range c.written {
+		if _, dirty := protected[rel]; !dirty {
+			continue
+		}
+		_, target, err := secureTarget(root, rel)
+		if err != nil {
+			return err
+		}
+		current, err := os.ReadFile(target)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("inspect current %s: %w", rel, err)
+		}
+		if bytes.Equal(current, expected) {
+			delete(protected, rel)
+		}
+	}
+	return nil
+}
+
 func (c *ChangeSet) Apply(root string, changes []FileChange, protected map[string]struct{}) error {
 	if len(changes) > maxChangesPerResponse {
 		return fmt.Errorf("provider proposed %d changes; maximum is %d", len(changes), maxChangesPerResponse)
