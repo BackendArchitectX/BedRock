@@ -18,7 +18,13 @@ jobs:
           go-version: "1.22.x"
           cache: false
       - name: Format
-        run: test -z "$(gofmt -l .)"
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            printf 'Files requiring gofmt:\n%s\n' "$files"
+            gofmt -d $files
+            exit 1
+          fi
       - name: Vet
         run: go vet ./...
       - name: Test
@@ -26,59 +32,55 @@ jobs:
       - name: Race test
         run: go test -race ./...
       - name: Canonical one-step start
+        shell: bash
         run: |
-          demo="$RUNNER_TEMP/bedrock-demo"
-          BEDROCK_DEMO_DIR="$demo" go run ./scripts/demo.go | tee /tmp/bedrock-demo.log
-          test "$(cat "$demo/repository/result.txt")" = "good"
-          grep -q '^status: VERIFIED$' /tmp/bedrock-demo.log
-          grep -q '^BedRock demo: READY$' /tmp/bedrock-demo.log
-          BEDROCK_DEMO_DIR="$demo" go run ./scripts/demo.go >/tmp/bedrock-demo-rerun.log
-          grep -q '^BedRock demo: READY$' /tmp/bedrock-demo-rerun.log
+          set -euo pipefail
+          BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" go run ./scripts/demo.go | tee "$RUNNER_TEMP/bedrock-demo.log"
+          test "$(cat "$RUNNER_TEMP/bedrock-demo/repository/result.txt")" = good
+          grep -q '^status: VERIFIED$' "$RUNNER_TEMP/bedrock-demo.log"
+          grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo.log"
+          # Rerun the exact canonical launcher to prove ordinary stale demo state is replaced safely.
+          BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" go run ./scripts/demo.go > "$RUNNER_TEMP/bedrock-demo-rerun.log"
+          grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo-rerun.log"
+
+          # A caller-selected existing directory must never be recursively cleaned
+          # unless a previous BedRock demo run explicitly marked it as owned.
           foreign="$RUNNER_TEMP/foreign-workspace"
-          mkdir -p "$foreign"
-          printf 'preserve me' > "$foreign/user.txt"
-          if BEDROCK_DEMO_DIR="$foreign" go run ./scripts/demo.go >/tmp/bedrock-demo-foreign.log 2>&1; then
-            echo 'launcher unexpectedly accepted foreign workspace' >&2
-            exit 1
-          fi
-          test "$(cat "$foreign/user.txt")" = "preserve me"
-          grep -q 'refusing to reuse' /tmp/bedrock-demo-foreign.log
-      - name: CLI failure rollback smoke
-        run: |
-          tmp="$(mktemp -d)"
-          repo="$tmp/repository"
-          home="$tmp/home"
-          mkdir -p "$repo" "$home"
-          git -C "$repo" init -q
-          git -C "$repo" config user.email ci@example.invalid
-          git -C "$repo" config user.name CI
-          printf 'original\n' > "$repo/file.txt"
-          git -C "$repo" add file.txt
-          git -C "$repo" commit -qm initial
-          cat > "$tmp/provider.sh" <<'EOF'
-          #!/bin/sh
-          printf '%s\n' '{"summary":"intentionally bad","files":[{"path":"file.txt","content":"bad\\n"}]}'
-          EOF
-          chmod +x "$tmp/provider.sh"
-          cat > "$tmp/config.json" <<EOF
-          {
-            "provider": {"command": "$tmp/provider.sh"},
-            "verification": {"commands": ["test \"\$(cat file.txt)\" = good"]},
-            "repair_attempts": 0
-          }
-          EOF
+          mkdir "$foreign"
+          printf 'preserve me\n' > "$foreign/user.txt"
           set +e
-          HOME="$home" go run ./cmd/bedrock run --repo "$repo" --config "$tmp/config.json" --task "prove rollback" >"$tmp/stdout" 2>"$tmp/stderr"
-          code=$?
+          BEDROCK_DEMO_DIR="$foreign" go run ./scripts/demo.go > "$RUNNER_TEMP/foreign.log" 2>&1
+          foreign_exit=$?
           set -e
-          test "$code" -ne 0
-          test "$(cat "$repo/file.txt")" = "original"
-          git -C "$repo" diff --quiet
-          evidence="$(find "$home/.local/share/bedrock/runs" -type f -name '*.json' -print -quit)"
-          test -n "$evidence"
-          grep -q '"status": "FAILED"' "$evidence"
-          grep -q '"rolled_back": true' "$evidence"
-          grep -q '"rollback_error": ""' "$evidence"
+          test "$foreign_exit" -ne 0
+          test "$(cat "$foreign/user.txt")" = 'preserve me'
+          grep -q 'refusing to reuse' "$RUNNER_TEMP/foreign.log"
+      - name: CLI failure rollback smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          go build -o "$RUNNER_TEMP/bedrock" ./cmd/bedrock
+          go build -o "$RUNNER_TEMP/fake-provider" ./cmd/bedrock/testdata/fakeprovider
+          repo="$RUNNER_TEMP/failure-repo"
+          mkdir "$repo"
+          git -C "$repo" init -q
+          printf 'keep me\n' > "$repo/user-work.txt"
+
+          set +e
+          "$RUNNER_TEMP/bedrock" run \
+            --repo "$repo" \
+            --task "write deterministic result" \
+            --provider-bin "$RUNNER_TEMP/fake-provider" \
+            --max-attempts 1 \
+            --verify 'false' \
+            > "$RUNNER_TEMP/bedrock-failure.log" 2>&1
+          exit_code=$?
+          set -e
+
+          test "$exit_code" -ne 0
+          test ! -e "$repo/result.txt"
+          test "$(cat "$repo/user-work.txt")" = 'keep me'
+          grep -q '^status: FAILED$' "$RUNNER_TEMP/bedrock-failure.log"
 
   windows-launcher:
     runs-on: windows-latest
@@ -106,9 +108,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "canonical launcher rerun failed with exit code $LASTEXITCODE`n$($rerun -join "`n")" }
           if (-not ($rerun -match '^BedRock demo: READY$')) { throw 'rerun missing READY status' }
 
-          # The ownership guard must preserve a foreign Windows workspace too. PowerShell 7.3+
-          # promotes native non-zero exits to ErrorRecords when ErrorActionPreference is Stop;
-          # disable that behavior only around this intentionally failing command so we can assert it.
+          # The ownership guard must preserve a foreign Windows workspace too.
           $foreign = Join-Path $env:RUNNER_TEMP 'foreign-workspace-windows'
           New-Item -ItemType Directory -Path $foreign | Out-Null
           Set-Content -Path (Join-Path $foreign 'user.txt') -Value 'preserve me' -NoNewline
