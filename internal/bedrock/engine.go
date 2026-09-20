@@ -111,6 +111,10 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 			return finish(rollback(err))
 		}
 
+		if err := changes.ValidateOwnWrites(root); err != nil {
+			failure = err.Error()
+			return finish(rollback(err))
+		}
 		currentProtected, err := DirtyPaths(root)
 		if err != nil {
 			failure = err.Error()
