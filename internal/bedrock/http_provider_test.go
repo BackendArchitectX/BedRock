@@ -32,6 +32,20 @@ func TestOpenAICompatibleProviderExecute(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderRejectsTrailingHTTPEnvelopeData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"summary\":\"done\",\"changes\":[]}"}}]} {"unexpected":true}`))
+	}))
+	defer server.Close()
+
+	provider := OpenAICompatibleProvider{Endpoint: server.URL, Model: "local-model"}
+	_, err := provider.Execute(context.Background(), ProviderRequest{Task: "x"})
+	if err == nil || !strings.Contains(err.Error(), "multiple JSON values") {
+		t.Fatalf("expected trailing HTTP envelope rejection, got %v", err)
+	}
+}
+
 func TestOpenAICompatibleProviderRedactsCredentialFromHTTPError(t *testing.T) {
 	const secret = "top-secret-token"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
