@@ -85,7 +85,9 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 		rollbackErr := changes.Rollback(root)
 		if rollbackErr != nil {
 			evidence.RolledBack = false
-			return fmt.Errorf("%w; rollback failed: %v", cause, rollbackErr)
+			combined := fmt.Errorf("%w; rollback failed: %v", cause, rollbackErr)
+			failure = combined.Error()
+			return combined
 		}
 		evidence.RolledBack = true
 		return cause
