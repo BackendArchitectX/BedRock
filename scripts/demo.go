@@ -62,6 +62,9 @@ func run() error {
 	if err := rejectSymlinkComponents(work); err != nil {
 		return err
 	}
+	if containsPath(root, work) {
+		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it is inside the BedRock checkout %s", work, root)
+	}
 	if containsPath(work, root) {
 		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it contains the BedRock checkout %s", work, root)
 	}
