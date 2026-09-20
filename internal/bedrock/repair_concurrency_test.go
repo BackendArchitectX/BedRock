@@ -39,8 +39,11 @@ func TestEnginePreservesTargetChangedBetweenRepairAttempts(t *testing.T) {
 	provider := &retryMutatingProvider{root: root}
 	engine := Engine{Provider: provider, Verifier: fileContentVerifier{path: "result.txt", want: "good"}, MaxAttempts: 2}
 	result, err := engine.Run(context.Background(), root, "make result good")
-	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite pre-existing dirty path") {
-		t.Fatalf("expected concurrent edit rejection, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "changed after BedRock wrote it") {
+		t.Fatalf("expected ownership conflict, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "rollback failed") {
+		t.Fatalf("expected rollback conflict to be reported, got %v", err)
 	}
 	if result.Evidence.RolledBack {
 		t.Fatal("rollback conflict was incorrectly recorded as successful")
