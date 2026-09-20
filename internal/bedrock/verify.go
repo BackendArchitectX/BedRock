@@ -77,7 +77,11 @@ func sensitiveEnvironmentValues() []string {
 }
 
 func sensitiveEnvironmentKey(key string) bool {
-	for _, marker := range []string{"TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "APIKEY", "PRIVATE_KEY", "ACCESS_KEY", "CREDENTIAL"} {
+	for _, marker := range []string{
+		"TOKEN", "SECRET", "PASSWORD", "PASSWD", "_PASS", "API_KEY", "APIKEY",
+		"PRIVATE_KEY", "ACCESS_KEY", "CREDENTIAL", "DATABASE_URL", "DATABASE_URI",
+		"CONNECTION_STRING",
+	} {
 		if strings.Contains(key, marker) {
 			return true
 		}
