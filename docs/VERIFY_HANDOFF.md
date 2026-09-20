@@ -1,31 +1,24 @@
 # Verification handoff
 
-## 2026-09-20 independent verification pass
+## 2026-09-20 connection-secret verification pass
 
 ### Repository reality inspected
 
 - Branch: `main`.
-- Pre-pass HEAD: `516685af9efb3364c0eddd3620ba2e8ec323b01e`.
-- Existing engineering ledger, CI workflow, engine implementation, deterministic fake provider, and recent Git-safety / CLI-smoke commits were inspected before changing anything.
-- GitHub Actions run `35474715417` for the pre-pass HEAD completed successfully. Its job executed Format, Vet, Test, Race test, and CLI smoke successfully.
+- Pre-pass HEAD: `f37696035530fd32bdf89603f67c772dbcd5a45e`.
+- Recent source, tests, engineering ledger, and GitHub Actions history were inspected before changes.
+- Actions run `35477286154` for the pre-pass HEAD completed successfully; Format, Vet, Test, Race test, successful CLI smoke, and failure/rollback CLI smoke all executed successfully.
 
-### Work completed
+### Defect found and fixed
 
-Added an independent negative-path CLI smoke check in commit `a6bfc6b6ac92484ad2790335ceb9612b858f3b8a`. It uses the built real `bedrock` CLI and deterministic fake provider against an isolated Git repository, deliberately fails verification, and requires all of the following:
+Verification evidence redaction detected conventional token/secret/password/API-key names, but common credential-bearing connection variables such as `DATABASE_URL`, `DATABASE_URI`, `*_CONNECTION_STRING`, and `DB_PASS` were not classified as sensitive. A verification command printing one of those values could therefore persist credentials in run evidence.
 
-- BedRock exits non-zero.
-- the provider-created `result.txt` is rolled back;
-- pre-existing untracked `user-work.txt` remains byte-for-byte intact;
-- CLI output reports `status: FAILED`.
+Commit `1fd63f9eacef63429d2e209526197cd39028d42f` extends the sensitive-name classifier for these connection-secret patterns. Commit `11f46fe9af637a111918e09a736dcf2b69873733` adds regression coverage for the newly recognized names.
 
-This closes an evidence gap left by the successful-path smoke test without adding product architecture.
+### Verification state
 
-### Tests actually executed
+The latest fully completed evidence inspected before these commits is Actions run `35477286154`, which passed the complete CI suite listed above. A new Actions run began for the source fix while this pass was active. The regression-test commit is therefore **UNVERIFIED** until a run containing commit `11f46fe9af637a111918e09a736dcf2b69873733` completes successfully; do not carry the earlier PASS forward to these changes.
 
-Before this change, Actions run `35474715417` completed successfully with Format, `go vet ./...`, `go test ./...`, `go test -race ./...`, and the successful real-CLI smoke all green.
+### Remaining risks / next action
 
-For the new negative-path check, Actions run `35475066925` started for commit `a6bfc6b6ac92484ad2790335ceb9612b858f3b8a`. At the last inspection in this pass it was still in progress; checkout had completed and setup-go was running, while the verification steps were pending. Therefore the new rollback smoke is **UNVERIFIED** until that run completes successfully.
-
-### Next action
-
-Inspect run `35475066925` first. If it fails, repair the exact failing step. If it succeeds, consider moving the two CLI smoke scenarios out of workflow shell into a maintainable integration-test harness only if doing so materially improves portability or diagnostics. Higher-value remaining risks are provider/verifier subprocess sandboxing, verification-output secret handling, and Windows/macOS behavior; do not claim those are solved.
+First inspect CI for current HEAD and repair any failure. Secret redaction remains heuristic rather than a general data-loss-prevention system; avoid claiming arbitrary secrets can never reach evidence. Provider and verifier subprocesses still run with local user permissions, and Windows/macOS behavior remains unverified. The next independent pass should prioritize an actual trust-boundary defect or portability gap rather than adding orchestration abstractions.
