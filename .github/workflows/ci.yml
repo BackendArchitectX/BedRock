@@ -31,27 +31,23 @@ jobs:
         run: go test ./...
       - name: Race test
         run: go test -race ./...
-      - name: CLI smoke
+      - name: Canonical one-step start
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" sh ./scripts/demo.sh | tee "$RUNNER_TEMP/bedrock-demo.log"
+          test "$(cat "$RUNNER_TEMP/bedrock-demo/repository/result.txt")" = good
+          grep -q '^status: VERIFIED$' "$RUNNER_TEMP/bedrock-demo.log"
+          grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo.log"
+          # Rerun the exact canonical launcher to prove ordinary stale demo state is replaced safely.
+          BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" sh ./scripts/demo.sh > "$RUNNER_TEMP/bedrock-demo-rerun.log"
+          grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo-rerun.log"
+      - name: CLI failure rollback smoke
         shell: bash
         run: |
           set -euo pipefail
           go build -o "$RUNNER_TEMP/bedrock" ./cmd/bedrock
           go build -o "$RUNNER_TEMP/fake-provider" ./cmd/bedrock/testdata/fakeprovider
-          repo="$RUNNER_TEMP/smoke-repo"
-          mkdir "$repo"
-          git -C "$repo" init -q
-          "$RUNNER_TEMP/bedrock" run \
-            --repo "$repo" \
-            --task "write deterministic result" \
-            --provider-bin "$RUNNER_TEMP/fake-provider" \
-            --verify 'test "$(cat result.txt)" = good' \
-            | tee "$RUNNER_TEMP/bedrock-smoke.log"
-          test "$(cat "$repo/result.txt")" = good
-          grep -q '^status: VERIFIED$' "$RUNNER_TEMP/bedrock-smoke.log"
-      - name: CLI failure rollback smoke
-        shell: bash
-        run: |
-          set -euo pipefail
           repo="$RUNNER_TEMP/failure-repo"
           mkdir "$repo"
           git -C "$repo" init -q
