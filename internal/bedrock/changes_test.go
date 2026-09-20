@@ -2,6 +2,7 @@ package bedrock
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -33,6 +34,35 @@ func TestParsePorcelainV1ZProtectsBothRenamePaths(t *testing.T) {
 func TestParsePorcelainV1ZRejectsTruncatedRename(t *testing.T) {
 	if _, err := parsePorcelainV1Z([]byte("R  new.txt\x00")); err == nil {
 		t.Fatal("expected truncated rename record to fail closed")
+	}
+}
+
+func TestDirtyPathsProtectsNestedRepositoryRoot(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init", "-q")
+	nested := filepath.Join(repo, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(nested, "owned.txt")
+	if err := os.WriteFile(path, []byte("user work"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dirty, err := DirtyPaths(nested)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := dirty["owned.txt"]; !ok {
+		t.Fatalf("nested dirty path was not protected: %#v", dirty)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, output)
 	}
 }
 
