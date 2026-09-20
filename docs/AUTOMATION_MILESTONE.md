@@ -10,8 +10,8 @@
 
 - Main HEAD observed this pass: `2d6aace2512eced6c784754c97aae81794caaa43`.
 - Milestone branch: `automation/bedrock-current`.
-- Branch HEAD before this handoff update: `1470715303afd6d18d12073aaf6f486b7c9c16c5`.
-- Main remained unchanged while the milestone branch advanced; no main reconciliation conflict was observed.
+- Milestone implementation HEAD inspected: `e8053edbd361e6114d0c891fee4c0a3e2421f1cc`.
+- Main remained unchanged; the milestone branch is based on that main baseline.
 
 ### M1 acceptance contract
 
@@ -25,28 +25,30 @@ M1 remains open until executable evidence demonstrates all of the following toge
 - existing safe-change and rollback behavior remains intact;
 - focused behavior tests and applicable broader regression tests pass.
 
-### Independent challenge this pass
+### Independent acceptance evidence this pass
 
-The branch's M1 evidence still recorded changed paths but had no content-sensitive diff evidence. Two runs that touched the same path with different patches were therefore indistinguishable from persisted evidence alone, preventing later review from proving which mutation was actually attempted/applied without rereading mutable repository state.
+GitHub Actions CI run `35538102190` executed against PR merge commit `89fd6a61884e0b88d34dbf409a1df565980b0c80`, combining milestone HEAD `e8053edbd361e6114d0c891fee4c0a3e2421f1cc` with unchanged main `2d6aace2512eced6c784754c97aae81794caaa43`.
 
-Focused repair through `1470715303afd6d18d12073aaf6f486b7c9c16c5`:
+The run FAILED and therefore M1 is rejected this cycle:
 
-- adds a deterministic SHA-256 `diffHash` over sorted changed paths plus before/after content digests;
-- persists the hash alongside changed paths without copying raw changed content into evidence;
-- leaves zero-change runs with no diff hash, preserving truthful no-op semantics;
-- adds regressions requiring identical mutations to hash identically, different mutations to hash differently, engine evidence to include the hash for a changed path, and persisted evidence not to contain raw patch content.
+- Linux prerequisite-safety step passed.
+- Linux `Format` failed because `internal/bedrock/engine_test.go` is not gofmt-clean. `go vet`, tests, Linux race, canonical demo, and rollback smoke were consequently skipped.
+- Windows canonical launcher executed successfully through the BedRock run itself and emitted `status: CHECKS_PASSED` plus `BedRock demo: READY`, but the existing CI assertion still requires the obsolete `status: VERIFIED` string and failed with `missing VERIFIED status`.
+- This Windows failure is an acceptance-suite compatibility regression caused by the intentional M1 truthful-status change, not evidence that M1 should revert to the misleading VERIFIED state. The gate must update the assertion to the truthful contract and then prove the full suite.
 
-### Verification actually performed
+### M1 implementation under review
 
-- Fetched current `main` and `automation/bedrock-current` and re-fetched `main` after the edits; main remained `2d6aace2512eced6c784754c97aae81794caaa43`.
-- Inspected the M1 contract, engine finish/evidence path, evidence schema, ChangeSet original/written tracking, and existing focused tests.
-- Attempted a fresh local clone again; the execution environment still failed before checkout because DNS could not resolve `github.com`.
-- GitHub reports no commit status checks for `1470715303afd6d18d12073aaf6f486b7c9c16c5`; therefore no `gofmt`, compile, `go vet`, `go test`, integration, or CI PASS is claimed for these changes.
+The branch contains the intended M1 direction: baseline/post verification evidence, truthful `CHECKS_PASSED` semantics rather than task-completion `VERIFIED`, no-op evidence behavior, provider summaries/attempt evidence, changed paths, and deterministic content-sensitive `diffHash` evidence without persisting raw patch content. Existing rollback/safe-change behavior is represented by focused tests but is not accepted until those tests actually execute successfully after the formatting gate is repaired.
 
 ### Remaining M1 acceptance gap
 
-The branch still needs executable formatting/compilation and focused/broader Go verification. The prior `engine_test.go` commit also requires `gofmt`; its compact formatting remains unverified. Integrate must not accept M1 until the branch is actually formatted, compiled, and tested and the persisted `diffHash` regression passes.
+Do not merge or advance CURRENT. Two concrete blockers must be repaired on `automation/bedrock-current`:
+
+1. run `gofmt` on `internal/bedrock/engine_test.go` and commit only the formatting result;
+2. update the Windows canonical-launcher CI expectation from obsolete `status: VERIFIED` to the truthful M1 status contract (`CHECKS_PASSED`) without weakening the `READY`/result assertions.
+
+After those repairs, require a fresh CI run to execute and pass format, vet, focused/broader tests, Linux race, canonical launcher, rollback/safety coverage, and Windows ordinary launcher execution. M1 remains NOT ACCEPTED until that executable evidence is green.
 
 ### One next action
 
-Obtain an executable checkout, run `gofmt` on the modified Go files (especially `engine_test.go`), then run `go test ./internal/bedrock`, `go vet ./...`, and `go test ./...`; correct any compile/test failures without advancing CURRENT beyond M1.
+Apply the two bounded acceptance repairs above, push the milestone branch, and use the resulting fresh CI run as the next Integrate gate. Do not advance to M2 before that run is green and the M1 behavioral contract is independently inspected.
