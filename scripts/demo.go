@@ -161,6 +161,9 @@ func rejectSymlinkComponents(path string) error {
 		info, err := os.Lstat(current)
 		if err == nil {
 			if info.Mode()&os.ModeSymlink != 0 {
+				if current == path {
+					return fmt.Errorf("refusing to use symlink %s as BEDROCK_DEMO_DIR", path)
+				}
 				return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because path component %s is a symlink", path, current)
 			}
 		} else if !os.IsNotExist(err) {
