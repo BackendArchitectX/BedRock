@@ -59,6 +59,11 @@ func run() error {
 	if filepath.Dir(work) == work {
 		return fmt.Errorf("refusing to use filesystem root %s as BEDROCK_DEMO_DIR", work)
 	}
+	if info, lstatErr := os.Lstat(work); lstatErr == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to use symlink %s as BEDROCK_DEMO_DIR", work)
+	} else if lstatErr != nil && !os.IsNotExist(lstatErr) {
+		return fmt.Errorf("inspect demo directory path: %w", lstatErr)
+	}
 	if containsPath(work, root) {
 		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it contains the BedRock checkout %s", work, root)
 	}
