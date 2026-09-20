@@ -116,12 +116,13 @@ func Snapshot(root, task string, maxFiles, maxBytes int) ([]FileContext, error) 
 
 func sensitiveContextPath(name string) bool {
 	name = strings.ToLower(name)
-	if name == ".env" || strings.HasPrefix(name, ".env.") {
+	if name == ".env" || name == ".envrc" || strings.HasPrefix(name, ".env.") {
 		return true
 	}
 	switch name {
-	case ".netrc", ".npmrc", ".pypirc", "credentials.json", "service-account.json",
-		"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519":
+	case ".netrc", ".npmrc", ".pypirc", "credentials", "credentials.json",
+		"application_default_credentials.json", "service-account.json", "secrets.json",
+		"secrets.yaml", "secrets.yml", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519":
 		return true
 	}
 	for _, suffix := range []string{".pem", ".key", ".p12", ".pfx", ".jks", ".keystore"} {
