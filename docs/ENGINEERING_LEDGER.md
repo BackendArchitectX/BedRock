@@ -4,6 +4,25 @@
 
 BedRock is a Go 1.22 local-first orchestration prototype on `main`. The current vertical slice accepts a task, gathers bounded repository context, invokes a provider-neutral command adapter, applies bounded file changes while protecting pre-existing dirty paths and repository metadata, runs explicit verification commands, retries once by default with failure evidence, and rolls changes back when verification never succeeds.
 
+## 2026-09-20 nested dirty-path verification repair
+
+### Work completed
+
+- Re-inspected current `main`, recent commits, CI, source/tests, and this ledger instead of carrying forward previous success claims.
+- Found current HEAD `ff5549a22b67c815f2e9fa717da79ea18a5f9111` failing CI run `35481591524` in `go test ./...`; format and vet passed, while race and CLI smoke stages were skipped after the unit-test failure.
+- Inspected the failing assertion. `DirtyPaths(nested)` correctly returned Git porcelain paths relative to the enclosing worktree (`nested/owned.txt`), but the new regression test incorrectly expected a path relative to the nested invocation directory (`owned.txt`). The implementation behavior is required by `ChangeSet.Apply`, whose protected paths are compared against repository-root-relative change paths.
+- Corrected only the invalid test expectation in commit `78e83ff4bb8609e329690bb0ab9bf62ecf06568c`; no runtime code was changed.
+
+### Tests actually executed / evidence
+
+- GitHub Actions run `35481591524` on the preceding HEAD executed: format PASS, vet PASS, unit tests FAIL at `TestDirtyPathsProtectsNestedRepositoryRoot`; race and both CLI smoke stages were skipped.
+- No local Go execution is claimed because this run used the connected GitHub repository API rather than a mounted checkout.
+- CI for repair commit `78e83ff4bb8609e329690bb0ab9bf62ecf06568c` was not yet visible when last inspected, so the repair is **UNVERIFIED** until a run containing it completes.
+
+### Remaining risks / next action
+
+First inspect CI for `78e83ff4bb8609e329690bb0ab9bf62ecf06568c` or the current HEAD and repair any real format/vet/unit/race/CLI-smoke failure. If green, independently test nested-root dirty protection end to end: invoke the engine on a nested directory while the enclosing worktree has dirty files and prove provider changes cannot overwrite those paths. Provider subprocesses and explicit verification commands still execute with local user permissions; no sandbox claim should be made.
+
 ## 2026-09-20 Git-aware context hardening
 
 ### Work completed
