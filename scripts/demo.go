@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 func fail(format string, args ...any) {
@@ -25,6 +26,9 @@ func main() {
 func run() error {
 	if _, err := exec.LookPath("go"); err != nil {
 		return fmt.Errorf("Go 1.22+ is required and was not found on PATH")
+	}
+	if err := requireSupportedGo(); err != nil {
+		return err
 	}
 	if _, err := exec.LookPath("git"); err != nil {
 		return fmt.Errorf("Git is required and was not found on PATH")
@@ -109,6 +113,22 @@ func run() error {
 	}
 	fmt.Println("BedRock demo: READY")
 	fmt.Printf("Workspace: %s\nResult: %s\n", repo, filepath.Join(repo, "result.txt"))
+	return nil
+}
+
+func requireSupportedGo() error {
+	output, err := exec.Command("go", "env", "GOVERSION").Output()
+	if err != nil {
+		return fmt.Errorf("determine Go version: %w", err)
+	}
+	version := strings.TrimSpace(string(output))
+	var major, minor int
+	if _, err := fmt.Sscanf(strings.TrimPrefix(version, "go"), "%d.%d", &major, &minor); err != nil {
+		return fmt.Errorf("could not parse Go version %q; Go 1.22+ is required", version)
+	}
+	if major < 1 || (major == 1 && minor < 22) {
+		return fmt.Errorf("Go 1.22+ is required; found %s", version)
+	}
 	return nil
 }
 
