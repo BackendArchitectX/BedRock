@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -135,5 +136,55 @@ func TestChangeSetRollbackRestoresAndRemoves(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "new.txt")); !os.IsNotExist(err) {
 		t.Fatalf("new file still exists: %v", err)
+	}
+}
+
+func TestChangeSetRollbackPreservesConcurrentEdit(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "existing.txt")
+	if err := os.WriteFile(path, []byte("before"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set := NewChangeSet()
+	if err := set.Apply(root, []FileChange{{Path: "existing.txt", Content: "bedrock edit"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("user edit during verification"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := set.Rollback(root)
+	if err == nil || !strings.Contains(err.Error(), "changed after BedRock wrote it") {
+		t.Fatalf("expected rollback conflict, got %v", err)
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != "user edit during verification" {
+		t.Fatalf("concurrent user edit was overwritten: %q", data)
+	}
+}
+
+func TestChangeSetRollbackPreservesConcurrentEditOfNewFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "new.txt")
+	set := NewChangeSet()
+	if err := set.Apply(root, []FileChange{{Path: "new.txt", Content: "bedrock edit"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("user took ownership"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := set.Rollback(root); err == nil {
+		t.Fatal("expected rollback conflict")
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != "user took ownership" {
+		t.Fatalf("concurrent user edit was removed: %q", data)
 	}
 }
