@@ -1,23 +1,28 @@
 # Latest engineering handoff
 
-## 2026-09-20 — verification-command secret redaction
+## 2026-09-20 — nested-root dirty-work protection correction
 
 ### Current state
 
-Current `main` had green CI at `16eaf000b60f5c85e39188e93b47e1aed19367f0` (Actions run `35477079550`) before this pass. That CI includes formatting, vet, unit tests, race tests, successful real-CLI smoke, and failed-verification rollback smoke.
+Before this pass, current `main` (`33cc7d58e1835107561f6ee062fa8828921ca11b`) had successful CI run `35481923304`, including format, vet, unit, race, successful CLI smoke, and failed-verification rollback smoke.
 
 ### Work completed
 
-- Re-inspected current source, recent commits, CI, and `docs/ENGINEERING_LEDGER.md` rather than trusting prior handoff claims.
-- Challenged the prior secret-output fix and found a remaining evidence leak: verification output was redacted, but `VerificationResult.Command` and verification error strings still retained the raw user-supplied command. If a command contained a secret value sourced from a sensitive environment variable, that value could reach persisted evidence through both fields.
-- Changed `ShellVerifier` to redact sensitive ambient environment values from the command before storing it or embedding it in returned verification errors.
-- Added a regression test that deliberately embeds a sensitive environment value in a failing verification command and requires the command evidence, captured output, and returned error to contain `[REDACTED]` and not the secret.
+- Re-inspected current commits, CI, `changes.go`, tests, and `docs/ENGINEERING_LEDGER.md` rather than trusting the preceding handoff.
+- Challenged the preceding nested-root test repair and found that it had encoded the wrong coordinate system as expected behavior. `DirtyPaths(nested)` returned `nested/owned.txt` relative to the enclosing Git worktree, while `ChangeSet.Apply(nested, ...)` compares provider paths relative to the BedRock run root (`owned.txt`). The two names therefore never matched, so a provider could overwrite dirty user work when BedRock was invoked from a subdirectory of a larger worktree.
+- Fixed `DirtyPaths` to ask Git for `--relative` status scoped to `.` so protected paths use the same run-root-relative coordinates as provider changes.
+- Strengthened the regression test beyond checking a map key: it now calls `ChangeSet.Apply` against the dirty nested file, requires the overwrite to be rejected, and verifies the original bytes remain unchanged.
+
+### Commits
+
+- `5310d117634eb897c6c19860e30df5a056774df6` — `fix(git): align nested dirty paths with run root`
+- `f0ff2b13494911036d3addf699a0fcacacf5ac22` — `test(git): prove nested dirty overwrite rejection`
 
 ### Verification status
 
-- No local test execution is claimed; repository access in this run is through GitHub.
-- CI run `35477276375` for regression-test commit `b680ba3983ff90f4bc134ba62cd30adb29833feb` was queued when last inspected. The new change is therefore **UNVERIFIED** until that run completes successfully.
+- No local Go execution is claimed because this run used the connected GitHub repository API rather than a mounted checkout.
+- CI run `35482552410` for the regression-test HEAD was **in progress** when last inspected. The new correction is therefore **UNVERIFIED** until that run completes successfully.
 
 ### Next highest-value action
 
-Inspect CI run `35477276375` first and repair any real failure. If green, investigate context selection against Git-ignored files: the current snapshotter filters known secret filenames but walks the filesystem directly, so ignored local artifacts may still be eligible for provider context. Prefer a small, testable Git-aware exclusion mechanism over a larger indexing subsystem.
+Inspect CI run `35482552410` first. If green, add an engine-level nested-root regression using a scripted provider to prove the complete `Engine.Run` path refuses to overwrite dirty work from a nested invocation. If CI fails, repair the actual failure before adding capabilities. Do not add larger orchestration abstractions while this safety boundary is still being proven.
