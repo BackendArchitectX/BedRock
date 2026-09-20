@@ -53,7 +53,7 @@ func TestDirtyPathsProtectsNestedRepositoryRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := dirty["owned.txt"]; !ok {
+	if _, ok := dirty["nested/owned.txt"]; !ok {
 		t.Fatalf("nested dirty path was not protected: %#v", dirty)
 	}
 }
