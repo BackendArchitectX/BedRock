@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -100,7 +101,10 @@ func run() error {
 		return err
 	}
 	result, err := os.ReadFile(filepath.Join(repo, "result.txt"))
-	if err != nil || string(result) != "good" {
+	if err != nil {
+		return fmt.Errorf("read verified result: %w", err)
+	}
+	if string(bytes.TrimSpace(result)) != "good" {
 		return fmt.Errorf("verification output did not match the expected result")
 	}
 	fmt.Println("BedRock demo: READY")
