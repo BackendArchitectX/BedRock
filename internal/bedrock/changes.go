@@ -36,12 +36,19 @@ func NewChangeSet() *ChangeSet {
 
 func DirtyPaths(root string) (map[string]struct{}, error) {
 	dirty := map[string]struct{}{}
-	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return dirty, nil
+	probe := exec.Command("git", "-C", root, "rev-parse", "--is-inside-work-tree")
+	probeOut, err := probe.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return nil, fmt.Errorf("inspect git worktree: %w", err)
 		}
-		return nil, err
+		return dirty, nil
 	}
+	if strings.TrimSpace(string(probeOut)) != "true" {
+		return dirty, nil
+	}
+
 	cmd := exec.Command("git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	out, err := cmd.Output()
 	if err != nil {
