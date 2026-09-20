@@ -17,20 +17,23 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 ### Verified baseline
 
 - Reconciled against current rewritten `origin/main`; superseded pre-rewrite hashes remain superseded.
-- GitHub Actions run `35504493734` for `f9fb8434697adeebf0063ba6316cea00328fc4e6` completed successfully.
-- Linux CI actually executed and passed prerequisite-failure safety, format, vet, unit tests, `go test -race ./...`, canonical one-step start/rerun, foreign-workspace/checkout protection, and CLI failure/rollback smoke.
+- GitHub Actions run `35505816276` for `9c34b6a1703412a8aed7465862ca99dd146a8f7d` completed successfully.
+- Linux CI actually executed and passed prerequisite-failure safety, format, vet, unit tests, `go test -race ./...`, canonical one-step start/rerun, foreign-workspace protection, explicit symlink-workspace-root refusal, checkout protection, and CLI failure/rollback smoke.
+- The symlink-workspace regression uses a target carrying a valid BedRock marker and sentinel, invokes the canonical launcher through a symlink root, requires non-zero exit, verifies the sentinel remains unchanged, and requires the refusal diagnostic.
 - Windows CI actually executed and passed the canonical one-step launcher acceptance, rerun, foreign-workspace refusal, and checkout-protection path.
-- The launcher rejects a symlink `BEDROCK_DEMO_DIR` root before marker access or child cleanup. The preceding regression also rejects a symlink `.bedrock-demo-owned` marker and verifies that its external target and workspace are not mutated.
+- The launcher rejects a direct symlink `BEDROCK_DEMO_DIR` root before marker access or child cleanup. The preceding regression also rejects a symlink `.bedrock-demo-owned` marker and verifies that its external target and workspace are not mutated.
 - Windows race detection is not executed because ThreadSanitizer could not initialize in the independently isolated local Windows environment; Linux CI remains the authoritative race gate.
 - Current commit author/committer map to the `BackendArchitectX` GitHub account; no superseded prohibited author history is treated as active.
 
 ### One-step acceptance status
 
-The deterministic prototype has one documented normal launcher, `go run ./scripts/demo.go`. The launcher checks required tools/version before creating or cleaning its workspace, requires an exact regular-file ownership marker for reuse, refuses filesystem-root, symlink-root, and checkout-containing workspace paths, rebuilds the CLI/provider, recreates only owned demo children, initializes the demo repository, waits for the real BedRock run and verification to finish, checks `result.txt`, and only then prints `READY`. README and CI use the same command. Rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, Linux success/failure orchestration, and Windows launcher execution are covered by current CI.
+The deterministic prototype has one documented normal launcher, `go run ./scripts/demo.go`. The launcher checks required tools/version before creating or cleaning its workspace, requires an exact regular-file ownership marker for reuse, refuses filesystem-root, direct symlink-root, and checkout-containing workspace paths, rebuilds the CLI/provider, recreates only owned demo children, initializes the demo repository, waits for the real BedRock run and verification to finish, checks `result.txt`, and only then prints `READY`. README and CI use the same command. Rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, direct symlink-workspace refusal, Linux success/failure orchestration, and Windows launcher execution are covered by current CI.
 
 ### Remaining risks / next action
 
-Before any new edit, fetch current `origin/main` because multiple writers may advance it. The symlink-root implementation itself is green in CI, but the exact `BEDROCK_DEMO_DIR` symlink-root refusal does not yet have its own explicit regression in the workflow; add that focused non-mutation regression before further launcher hardening. Then prioritize clean-checkout/release validation, failed dependency/tool diagnostics, dependency health, and documentation accuracy over feature growth.
+Before any new edit, fetch current `origin/main` because multiple writers may advance it. A direct symlink workspace root is now independently regression-tested and green. The next launcher safety case is an ordinary-looking `BEDROCK_DEMO_DIR` beneath a symlinked ancestor: `filepath.Abs` and `os.Lstat(work)` do not canonicalize or reject ancestor symlinks, so containment and cleanup remain lexical for that case. Add a non-mutation regression for a symlinked parent and then either reject symlink ancestors or compare canonical physical paths before any marker access or cleanup. Re-run Linux and Windows canonical acceptance after the fix.
+
+After that, prioritize clean-checkout/release validation, failed dependency/tool diagnostics, dependency health, and documentation accuracy over feature growth.
 
 Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made. Live-provider behavior and broader OS/environment combinations remain outside the deterministic demo proof.
 
