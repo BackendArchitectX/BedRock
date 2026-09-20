@@ -17,7 +17,7 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 ### Verified baseline
 
 - Reconciled against current rewritten `origin/main`; superseded pre-rewrite hashes remain superseded.
-- Current pre-ledger baseline `42da4d4bf6bd901088a9a7b0c08adbfd5cce043f` (`ci: remove redundant demo path safety workflow`) has successful GitHub Actions CI run `35511819998`.
+- Exact pre-ledger HEAD `39399d6597ba36b4a506579b343518b8d967ed52` (`docs: record consolidated launcher verification`) completed GitHub Actions CI run `35512489763` successfully. This supersedes the earlier pre-ledger baseline reference to `42da4d4bf6bd901088a9a7b0c08adbfd5cce043f`.
 - Linux CI actually executed and passed prerequisite-failure non-mutation, format, `go vet ./...`, `go test ./...`, `go test -race ./...`, canonical one-step start/rerun, foreign-workspace refusal, direct and ancestor symlink-workspace refusal, checkout protection, interrupted-owned-workspace recovery, and CLI failure/rollback smoke.
 - Windows CI actually executed and passed the canonical one-step launcher, rerun/idempotency, foreign-workspace refusal, and checkout protection.
 - The formerly separate Demo path safety workflow was removed only after its unique ancestor-symlink and partial-recovery assertions were consolidated into primary CI; commit `2c7a1e5e8a4774e31c5a271651acaf1ecb85f6a9` had also completed the old dedicated workflow successfully before removal.
