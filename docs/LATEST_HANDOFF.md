@@ -1,22 +1,28 @@
 # Latest engineering handoff
 
-## 2026-09-20 — verification-failure recovery proven
+## 2026-09-20 — verification-aware provider context
 
 ### Current state
 
-Reconciled against current `origin/main` at `217ae2cc91378dc2af2e128b1381b47afc85857a`. The canonical fresh-checkout path remains `go run ./scripts/demo.go`; scheduler staggering is external only and has no product/runtime meaning.
+Reconciled against `origin/main` through product/test commit `4de07761`. The canonical fresh-checkout path remains `go run ./scripts/demo.go`; scheduler staggering is external only and has no product/runtime meaning.
 
-### Work verified
+### Work verified before this change
 
-- CI run `35520365385` for exact HEAD `217ae2cc` completed successfully.
-- The new verification-stage recovery regression executes a real canonical launch with injected verification failure after provider output, requires the launch to fail without `READY`, requires generated `result.txt` to be absent after rollback, preserves unrelated caller state, then reruns the canonical launcher and requires `status: VERIFIED`, `READY`, and a fresh `result.txt = good`.
-- This closes the prior ledger's verification-stage recovery gap. Provider-failure recovery and repository-init failure recovery were already covered on preceding green descendants.
-- Preserve the user's Windows evidence: ordinary Windows build/test/vet are valid; Windows race is not executed due to the independently reproduced ThreadSanitizer startup failure. Linux CI remains the authoritative race gate.
+- CI run `35527173288` for `26138ea7` completed successfully. That baseline exercised Linux formatting, vet, tests, authoritative race checks, canonical one-step startup/rollback, Windows launcher acceptance, and an actual CLI run through the built-in OpenAI-compatible HTTP provider fixture.
+- The built-in HTTP provider is therefore no longer only unit-tested wiring: the CLI fixture verifies authorization/model request behavior and a provider-produced repository edit through verification.
+- Preserve the user's Windows evidence: ordinary Windows build/test/vet are valid; Windows race is not executed because ThreadSanitizer could not initialize. Linux CI remains the authoritative race gate.
 
-### Challenge / next action
+### Change in this pass
 
-Do not spend the next pass adding more launcher path denylist cases unless a concrete defect is found. The deterministic one-step prototype is now well covered across startup, rerun, path ownership, init failure, provider failure, verification failure, rollback, and Windows execution.
+- `ProviderRequest` now carries `verificationCommands` when the configured verifier is `ShellVerifier`, so a real model knows the acceptance commands before its first edit instead of discovering them only after a failed attempt.
+- The plan is copied from verifier configuration and redacted with the same sensitive-environment-value mechanism used for verification evidence before it crosses the provider boundary.
+- The built-in HTTP-provider CLI integration test now decodes the actual provider context and requires the verification plan to arrive while an API-key value embedded in the test command is absent and replaced by `[REDACTED]`.
+- CI for the newest product/test commit was still running when this handoff was written; do not call `4de07761` verified until its exact-head workflow succeeds.
 
-The highest-value product gap is functional: BedRock still requires an external provider executable for a real model. Next evaluate and implement the smallest built-in self-hostable provider path, preferably an OpenAI-compatible HTTP adapter usable with local servers such as Ollama/vLLM-compatible endpoints, without coupling the orchestration core to one vendor. Keep the deterministic zero-secret launcher as the default CI acceptance path. Any live-provider mode must validate endpoint/model configuration explicitly, never fabricate secrets, bound HTTP execution/output, and must not claim readiness until the configured provider is actually reachable.
+### Product usefulness assessment / next action
+
+BedRock can now gather bounded repository context, call either a command provider or built-in OpenAI-compatible HTTP provider, apply bounded protected changes, run configured verification, feed verification failure/output into a repair attempt, rollback on terminal failure, and persist run evidence. The verification-aware first request materially improves real-model first-attempt quality without importing external scheduler semantics.
+
+The highest-value remaining functional gap is change expressiveness: provider changes currently only write/replace regular files. A software-engineering run cannot intentionally delete an obsolete tracked file. Next implement an explicit, bounded delete operation with the same dirty-path, symlink/path-containment, concurrent-modification, rollback, repair-attempt, evidence, and HTTP-provider integration guarantees as writes. Do not encode deletion as magic empty content.
 
 Provider subprocesses and verification commands still execute with local-user permissions; do not claim sandboxing.
