@@ -24,6 +24,18 @@ func (p *scriptedProvider) Execute(_ context.Context, _ ProviderRequest) (Provid
 	return response, nil
 }
 
+type mutatingProvider struct {
+	root string
+}
+
+func (p mutatingProvider) Name() string { return "mutating-test" }
+func (p mutatingProvider) Execute(_ context.Context, _ ProviderRequest) (ProviderResponse, error) {
+	if err := os.WriteFile(filepath.Join(p.root, "result.txt"), []byte("external edit"), 0o644); err != nil {
+		return ProviderResponse{}, err
+	}
+	return ProviderResponse{Changes: []FileChange{{Path: "result.txt", Content: "provider edit"}}}, nil
+}
+
 type fileContentVerifier struct {
 	path string
 	want string
@@ -63,27 +75,17 @@ func TestEngineRepairsAfterFailedVerification(t *testing.T) {
 		{Summary: "first attempt", Changes: []FileChange{{Path: "result.txt", Content: "bad"}}},
 		{Summary: "repair", Changes: []FileChange{{Path: "result.txt", Content: "good"}}},
 	}}
-	engine := Engine{
-		Provider:    provider,
-		Verifier:    fileContentVerifier{path: "result.txt", want: "good"},
-		MaxAttempts: 2,
-	}
+	engine := Engine{Provider: provider, Verifier: fileContentVerifier{path: "result.txt", want: "good"}, MaxAttempts: 2}
 	result, err := engine.Run(context.Background(), root, "make result good")
 	if err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
-	if result.Evidence.Status != "VERIFIED" {
-		t.Fatalf("status=%s", result.Evidence.Status)
-	}
-	if provider.calls != 2 {
-		t.Fatalf("provider calls=%d, want 2", provider.calls)
+	if result.Evidence.Status != "VERIFIED" || provider.calls != 2 {
+		t.Fatalf("status=%s provider calls=%d", result.Evidence.Status, provider.calls)
 	}
 	data, err := os.ReadFile(filepath.Join(root, "result.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "good" {
-		t.Fatalf("final content=%q", data)
+	if err != nil || string(data) != "good" {
+		t.Fatalf("final content=%q err=%v", data, err)
 	}
 }
 
@@ -97,24 +99,14 @@ func TestEngineRollsBackWhenVerificationNeverPasses(t *testing.T) {
 		{Changes: []FileChange{{Path: "result.txt", Content: "bad-1"}}},
 		{Changes: []FileChange{{Path: "result.txt", Content: "bad-2"}}},
 	}}
-	engine := Engine{
-		Provider:    provider,
-		Verifier:    fileContentVerifier{path: "result.txt", want: "good"},
-		MaxAttempts: 2,
-	}
+	engine := Engine{Provider: provider, Verifier: fileContentVerifier{path: "result.txt", want: "good"}, MaxAttempts: 2}
 	result, err := engine.Run(context.Background(), root, "make result good")
-	if err == nil {
-		t.Fatal("expected verification failure")
-	}
-	if !result.Evidence.RolledBack {
-		t.Fatal("expected rollback evidence")
+	if err == nil || !result.Evidence.RolledBack {
+		t.Fatalf("expected failed verified rollback, err=%v evidence=%+v", err, result.Evidence)
 	}
 	data, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if string(data) != "original" {
-		t.Fatalf("rollback content=%q", data)
+	if readErr != nil || string(data) != "original" {
+		t.Fatalf("rollback content=%q err=%v", data, readErr)
 	}
 }
 
@@ -124,31 +116,15 @@ func TestEngineRejectsNonzeroVerificationResultWithoutError(t *testing.T) {
 	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	provider := &scriptedProvider{responses: []ProviderResponse{
-		{Changes: []FileChange{{Path: "result.txt", Content: "provider-change"}}},
-	}}
-	engine := Engine{
-		Provider:    provider,
-		Verifier:    inconsistentVerifier{},
-		MaxAttempts: 1,
-	}
-
+	provider := &scriptedProvider{responses: []ProviderResponse{{Changes: []FileChange{{Path: "result.txt", Content: "provider-change"}}}}}
+	engine := Engine{Provider: provider, Verifier: inconsistentVerifier{}, MaxAttempts: 1}
 	result, err := engine.Run(context.Background(), root, "change result")
-	if err == nil {
-		t.Fatal("expected inconsistent verifier result to fail the run")
-	}
-	if result.Evidence.Status == "VERIFIED" {
-		t.Fatal("nonzero verification result was incorrectly marked VERIFIED")
-	}
-	if !result.Evidence.RolledBack {
-		t.Fatal("expected provider change to be rolled back")
+	if err == nil || result.Evidence.Status == "VERIFIED" || !result.Evidence.RolledBack {
+		t.Fatalf("unexpected result err=%v evidence=%+v", err, result.Evidence)
 	}
 	data, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if string(data) != "original" {
-		t.Fatalf("rollback content=%q", data)
+	if readErr != nil || string(data) != "original" {
+		t.Fatalf("rollback content=%q err=%v", data, readErr)
 	}
 }
 
@@ -158,15 +134,8 @@ func TestEngineReportsRollbackConflictWithoutOverwritingConcurrentEdit(t *testin
 	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	provider := &scriptedProvider{responses: []ProviderResponse{
-		{Changes: []FileChange{{Path: "result.txt", Content: "provider-change"}}},
-	}}
-	engine := Engine{
-		Provider:    provider,
-		Verifier:    concurrentEditVerifier{path: "result.txt"},
-		MaxAttempts: 1,
-	}
-
+	provider := &scriptedProvider{responses: []ProviderResponse{{Changes: []FileChange{{Path: "result.txt", Content: "provider-change"}}}}}
+	engine := Engine{Provider: provider, Verifier: concurrentEditVerifier{path: "result.txt"}, MaxAttempts: 1}
 	result, err := engine.Run(context.Background(), root, "change result")
 	if err == nil || !strings.Contains(err.Error(), "rollback failed") {
 		t.Fatalf("expected rollback conflict in run error, got %v", err)
@@ -175,10 +144,31 @@ func TestEngineReportsRollbackConflictWithoutOverwritingConcurrentEdit(t *testin
 		t.Fatal("rollback conflict was incorrectly recorded as successful rollback")
 	}
 	data, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatal(readErr)
+	if readErr != nil || string(data) != "user edit during verification" {
+		t.Fatalf("concurrent edit=%q err=%v", data, readErr)
 	}
-	if string(data) != "user edit during verification" {
-		t.Fatalf("concurrent edit was overwritten: %q", data)
+}
+
+func TestEngineRejectsTargetChangedDuringProviderExecution(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+	path := filepath.Join(root, "result.txt")
+	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, root, "add", "result.txt")
+	runGit(t, root, "-c", "user.name=BedRock Test", "-c", "user.email=bedrock@example.invalid", "commit", "-qm", "fixture")
+
+	engine := Engine{Provider: mutatingProvider{root: root}, MaxAttempts: 1}
+	result, err := engine.Run(context.Background(), root, "change result")
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite dirty path") {
+		t.Fatalf("expected concurrent mutation rejection, got %v", err)
+	}
+	if !result.Evidence.RolledBack {
+		t.Fatal("expected no-op rollback to complete")
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil || string(data) != "external edit" {
+		t.Fatalf("external edit was overwritten: %q err=%v", data, readErr)
 	}
 }
