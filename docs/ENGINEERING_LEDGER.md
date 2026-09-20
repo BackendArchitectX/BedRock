@@ -4,6 +4,25 @@
 
 BedRock is a Go 1.22 local-first orchestration prototype on `main`. The current vertical slice accepts a task, gathers bounded repository context, invokes a provider-neutral command adapter, applies bounded file changes while protecting pre-existing dirty paths and repository metadata, runs explicit verification commands, retries once by default with failure evidence, and rolls changes back when verification never succeeds.
 
+## 2026-09-20 Git-aware context hardening
+
+### Work completed
+
+- Re-inspected current `main`, recent commits, CI, context selection, tests, and this ledger rather than carrying forward prior PASS claims.
+- Confirmed preceding HEAD `470786989a7d623e03025417cad04b5df574f93a` had successful CI run `35479303942`.
+- Challenged the growing credential filename denylist and found a broader repository-reality gap: `Snapshot` walked the filesystem directly, so files intentionally excluded by `.gitignore` could still be sent to the model provider.
+- Kept the fix small: for Git worktrees, context candidates are now constrained to `git ls-files -co --exclude-standard -z` (tracked files plus non-ignored untracked files). Non-Git directories retain the existing filesystem behavior.
+- Added a regression test proving ordinary tracked/untracked context remains available while directory- and glob-ignored local files do not enter provider context.
+
+### Tests actually executed / evidence
+
+- No local Go execution is claimed because this run used the connected GitHub repository API rather than a mounted checkout.
+- CI run `35479867536` started on regression-test HEAD `fff324804f4732e54f64b3aeac282274adf156b5` and was still `in_progress` when last inspected. Therefore this change remains **UNVERIFIED** until that run completes successfully.
+
+### Remaining risks / next action
+
+First inspect CI run `35479867536` and repair any format/vet/test/race/CLI-smoke failure before adding features. If green, challenge Git worktree detection for `.git` files used by linked worktrees/submodules: the current implementation detects `.git` existence but `git ls-files` should be independently verified in those layouts. Filename filtering remains defense in depth; tracked ordinary files may still contain secrets. Provider subprocesses and verification shell commands still run with local user permissions, so no sandbox claim should be made.
+
 ## 2026-09-20 credential-context hardening pass
 
 ### Work completed
