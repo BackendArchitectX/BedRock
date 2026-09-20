@@ -35,12 +35,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" sh ./scripts/demo.sh | tee "$RUNNER_TEMP/bedrock-demo.log"
+          BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" go run ./scripts/demo.go | tee "$RUNNER_TEMP/bedrock-demo.log"
           test "$(cat "$RUNNER_TEMP/bedrock-demo/repository/result.txt")" = good
           grep -q '^status: VERIFIED$' "$RUNNER_TEMP/bedrock-demo.log"
           grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo.log"
           # Rerun the exact canonical launcher to prove ordinary stale demo state is replaced safely.
-          BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" sh ./scripts/demo.sh > "$RUNNER_TEMP/bedrock-demo-rerun.log"
+          BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" go run ./scripts/demo.go > "$RUNNER_TEMP/bedrock-demo-rerun.log"
           grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo-rerun.log"
 
           # A caller-selected existing directory must never be recursively cleaned
@@ -49,7 +49,7 @@ jobs:
           mkdir "$foreign"
           printf 'preserve me\n' > "$foreign/user.txt"
           set +e
-          BEDROCK_DEMO_DIR="$foreign" sh ./scripts/demo.sh > "$RUNNER_TEMP/foreign.log" 2>&1
+          BEDROCK_DEMO_DIR="$foreign" go run ./scripts/demo.go > "$RUNNER_TEMP/foreign.log" 2>&1
           foreign_exit=$?
           set -e
           test "$foreign_exit" -ne 0
