@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -33,6 +34,10 @@ func Snapshot(root, task string, maxFiles, maxBytes int) ([]FileContext, error) 
 	if err != nil {
 		return nil, err
 	}
+	eligible, gitRepo, err := gitContextPaths(root)
+	if err != nil {
+		return nil, err
+	}
 	terms := taskTerms(task)
 	const maxScannedBytes = 4 * 1024 * 1024
 	const maxPerFile = 64 * 1024
@@ -56,6 +61,16 @@ func Snapshot(root, task string, maxFiles, maxBytes int) ([]FileContext, error) 
 		if len(candidates) >= maxCandidates || scanned >= maxScannedBytes {
 			return nil
 		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if gitRepo {
+			if _, ok := eligible[rel]; !ok {
+				return nil
+			}
+		}
 		if sensitiveContextPath(d.Name()) {
 			return nil
 		}
@@ -74,11 +89,6 @@ func Snapshot(root, task string, maxFiles, maxBytes int) ([]FileContext, error) 
 			return nil
 		}
 		scanned += len(data)
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
 		text := string(data)
 		candidates = append(candidates, candidateFile{
 			path:    rel,
@@ -112,6 +122,28 @@ func Snapshot(root, task string, maxFiles, maxBytes int) ([]FileContext, error) 
 		used += size
 	}
 	return result, nil
+}
+
+func gitContextPaths(root string) (map[string]struct{}, bool, error) {
+	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("inspect git metadata: %w", err)
+	}
+	cmd := exec.Command("git", "-C", root, "ls-files", "-co", "--exclude-standard", "-z")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, true, fmt.Errorf("list git context files: %w", err)
+	}
+	paths := make(map[string]struct{})
+	for _, raw := range bytes.Split(out, []byte{0}) {
+		if len(raw) == 0 {
+			continue
+		}
+		paths[filepath.ToSlash(string(raw))] = struct{}{}
+	}
+	return paths, true, nil
 }
 
 func sensitiveContextPath(name string) bool {
