@@ -51,21 +51,38 @@ func run() error {
 		return fmt.Errorf("resolve demo directory: %w", err)
 	}
 	marker := filepath.Join(work, ".bedrock-demo-owned")
+	newWorkspace := false
 	if info, statErr := os.Stat(work); statErr == nil {
 		if !info.IsDir() {
 			return fmt.Errorf("refusing to reuse %s because it is not a directory", work)
 		}
-		if _, markerErr := os.Stat(marker); markerErr != nil {
+		markerInfo, markerErr := os.Lstat(marker)
+		if markerErr != nil {
 			return fmt.Errorf("refusing to reuse %s because it is not marked as a BedRock demo directory; choose an empty BEDROCK_DEMO_DIR or remove it yourself", work)
 		}
-	} else if !os.IsNotExist(statErr) {
+		if !markerInfo.Mode().IsRegular() {
+			return fmt.Errorf("refusing to reuse %s because its BedRock ownership marker is not a regular file", work)
+		}
+	} else if os.IsNotExist(statErr) {
+		newWorkspace = true
+	} else {
 		return fmt.Errorf("inspect demo directory: %w", statErr)
 	}
 	if err := os.MkdirAll(work, 0o700); err != nil {
 		return fmt.Errorf("create demo directory: %w", err)
 	}
-	if err := os.WriteFile(marker, []byte("BedRock demo workspace\n"), 0o600); err != nil {
-		return fmt.Errorf("mark demo directory: %w", err)
+	if newWorkspace {
+		markerFile, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			return fmt.Errorf("mark demo directory: %w", err)
+		}
+		if _, err := markerFile.WriteString("BedRock demo workspace\n"); err != nil {
+			_ = markerFile.Close()
+			return fmt.Errorf("mark demo directory: %w", err)
+		}
+		if err := markerFile.Close(); err != nil {
+			return fmt.Errorf("mark demo directory: %w", err)
+		}
 	}
 
 	binDir := filepath.Join(work, "bin")
