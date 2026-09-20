@@ -4,27 +4,28 @@
 
 BedRock is a Go 1.22 local-first orchestration prototype on `main`. The current vertical slice accepts a task, gathers bounded repository context, invokes a provider-neutral command adapter, applies bounded file changes while protecting pre-existing dirty paths and repository metadata, runs explicit verification commands, retries once by default with failure evidence, and rolls changes back when verification never succeeds.
 
-## 2026-09-20 one-step launcher cleanup safety
+## 2026-09-20 canonical launcher Windows verification
 
 ### Work completed
 
-- Reconciled against current `origin/main` baseline `fa1bcc77a1224cf6f470f4beec4affa16e9396ba` before editing. That baseline's GitHub Actions run `35495019168` completed successfully, and user-reported Windows verification after rebase/push remains authoritative execution evidence for build/test/race/vet.
-- Challenged the new canonical launcher against the product acceptance requirement to clean up partial/stale startup safely.
-- Found a destructive boundary: `BEDROCK_DEMO_DIR` was caller-controlled and the launcher unconditionally executed `rm -rf "$work"`. A typo or intentionally broad path could therefore recursively delete unrelated user data.
-- Replaced whole-workspace deletion with an ownership marker. Existing unmarked directories are rejected with an actionable diagnostic; BedRock only recreates its own `bin` and `repository` children after the workspace has been marked as launcher-owned.
-- Added CI coverage that points `BEDROCK_DEMO_DIR` at an existing foreign directory, requires startup to fail, and proves a sentinel user file is preserved. Existing successful-start and rerun checks remain in the same canonical launcher job.
+- Reconciled against current `origin/main` at `f574dba00d1e44f1f2677bd27bccc00c7f33f0b0`, not the superseded pre-rewrite hashes. GitHub Actions run `35497452398` for that baseline completed successfully.
+- Challenged the cross-platform `go run ./scripts/demo.go` launcher against the one-step acceptance requirement. The implementation already branches verifier syntax by `runtime.GOOS`, but CI only exercised the canonical launcher on Ubuntu. Therefore Windows one-step support was implemented but not independently proven.
+- Added a dedicated `windows-latest` CI job that executes the exact canonical command, requires the real orchestration result to equal `good`, requires emitted `status: VERIFIED` and `BedRock demo: READY`, reruns the same command to exercise idempotent owned-workspace cleanup, and exercises the foreign-workspace ownership guard while proving its sentinel remains unchanged.
+- Kept the Linux race gate unchanged. The user-reproduced Windows ThreadSanitizer startup failure is environmental and this Windows launcher job intentionally does not run `go test -race`; Linux CI remains authoritative for race detection.
 
 ### Tests actually executed / evidence
 
-- Before push, `sh -n` executed successfully against the revised launcher locally.
-- A local shell safety scenario executed the revised guard against an existing foreign temporary directory: the launcher returned non-zero, emitted the refusal diagnostic, and preserved the sentinel file.
-- Source commit: `05d1b33f941d6645a520ede22afe0270f9e6e2cb`.
-- CI regression commit: `ba186ee7f58f6e4f2a9dc0d1fe86c46ed8329ac0`.
-- GitHub Actions run `35495378765` for the regression HEAD was still in progress when last inspected. Therefore full format/vet/test/race/canonical-start/failure-rollback verification of this HEAD is **UNVERIFIED** until that run completes successfully.
+- Baseline `f574dba00d1e44f1f2677bd27bccc00c7f33f0b0`: GitHub Actions run `35497452398` completed successfully, including Linux format, vet, tests, race tests, canonical launcher, rerun, foreign-workspace guard, and failure rollback smoke.
+- Windows CI coverage commit: `631cda1506a1671a342dd0b1c802f8bf86ea5e82`.
+- At the first post-push inspection, a workflow run for `631cda1` was not yet visible in the Actions listing. Therefore the new Windows job is **UNVERIFIED** until a run for this commit or a descendant executes successfully. Do not infer PASS from the green predecessor.
 
 ### Remaining risks / next action
 
-First inspect CI run `35495378765` (or newer current-HEAD CI) and repair any real failure before adding functionality. The canonical fresh-checkout launcher is still POSIX-shell-only even though the Go code itself has now been independently verified on Windows; the next one-step-start design decision should challenge whether a small cross-platform Go bootstrap (`go run ...`) can replace OS-specific launchers without duplicating runtime logic. Do not claim Windows one-step startup until the canonical launcher itself is exercised there. Provider subprocesses and explicit verification commands still execute with local user permissions; no sandbox claim should be made.
+First inspect current-HEAD CI. If the Windows job fails, repair the actual launcher/PowerShell portability defect rather than weakening assertions. If it passes, Windows one-step startup can be claimed for the deterministic prototype. The next one-step acceptance gap should then be prerequisite diagnostics: the launcher says Go 1.22+ is required but currently only checks that a `go` executable exists; determine whether explicit version validation adds actionable value beyond the `go run`/`go.mod` failure without duplicating Go's own compatibility logic. Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made.
+
+## 2026-09-20 one-step launcher cleanup safety
+
+The canonical launcher uses an ownership marker and refuses existing unmarked workspaces. It only recreates BedRock-owned `bin` and `repository` children. This protects caller-selected foreign directories from recursive cleanup. Detailed historical commits before the controlled author rewrite are superseded; current repository state is authoritative.
 
 ## Historical notes
 
