@@ -1,28 +1,28 @@
 # Current Engineering Handoff
 
-## 2026-09-20 pre-apply mutation guard verification
+## 2026-09-20 verifier cancellation CI repair
 
 ### Current state
 
-BedRock remains a Go 1.22 local-first orchestration prototype on `main`. The pre-apply mutation guard is implemented: after provider execution, the engine re-reads Git dirty paths before applying provider changes so edits made while the provider is running are protected.
+BedRock remains a Go 1.22 local-first orchestration prototype on `main`. Runtime/provider/verifier cancellation support is present, but the latest completed CI exposed a flaky cancellation regression test rather than a demonstrated runtime defect.
 
 ### Work completed
 
-- Re-inspected current history, current engine/test code, and the latest GitHub Actions result instead of carrying forward prior PASS claims.
-- Latest CI run `35486767580` on `172d514c2d6ecc8a83292813b705b53bad303023` failed only in `TestEngineRejectsTargetChangedDuringProviderExecution`.
-- The runtime behavior was correct: `ChangeSet.Apply` rejected the provider overwrite with `refusing to overwrite pre-existing dirty path "result.txt"` and preserved the external edit. The test expected an older/different wording (`refusing to overwrite dirty path`) and therefore failed.
-- Updated only the assertion to match the stable error emitted by the existing protection path. No runtime behavior was weakened or changed.
+- Re-inspected current `main`, recent commits, current verifier source/tests, durable ledger, and actual GitHub Actions logs instead of carrying forward prior claims.
+- CI run `35491836217` on `ce3a984eb1f643f544f8d931bf7bd9b39a6a2688` passed Format and Vet, then failed only `TestShellVerifierPreservesCancellationCause` after 10.11 seconds; race and CLI smoke stages were skipped.
+- Root cause: the test launched `sh -c "sleep 30"`. Canceling Go's `exec.CommandContext` kills the shell process, but a spawned descendant can retain the inherited stdout/stderr pipes; `Cmd.Run` can therefore wait for pipe EOF even though the command process was canceled. The test was asserting process-tree behavior BedRock does not currently implement.
+- Replaced that flaky descendant-process timing test with a deterministic already-canceled-context regression. It still verifies that `ShellVerifier` preserves `context.Canceled` without pretending BedRock has process-group sandbox/termination semantics.
 
 ### Tests actually executed / evidence
 
-- GitHub Actions run `35486767580`: Format PASS; Vet PASS; `go test ./...` FAIL solely at `TestEngineRejectsTargetChangedDuringProviderExecution` because of the stale error substring. Race and CLI smoke stages were skipped after the unit-test failure.
-- Commit `96a6285a4919599d2499539b5fc885d04179448f` updates the regression assertion.
-- No local Go execution is claimed; this run used the connected GitHub repository and CI evidence.
+- GitHub Actions run `35491836217`: Format PASS; Vet PASS; `go test ./...` FAIL only at `TestShellVerifierPreservesCancellationCause`; race and CLI smoke stages skipped.
+- Repair commit: `68635b1a590bde2a461aca09395ff4c089a25cd8` (`fix(test): remove shell descendant cancellation flake`).
+- CI run `35492245417` for the repair was queued at final inspection. No local Go execution is claimed.
 
 ### Verification status
 
-**UNVERIFIED on current HEAD** until GitHub Actions completes on a commit containing the corrected assertion. The preceding failure demonstrates that the new mutation guard itself rejected the overwrite and preserved the external edit, but race and CLI stages still need to execute successfully on the corrected HEAD.
+**UNVERIFIED on repair HEAD** until run `35492245417` completes. Do not report unit/race/CLI PASS for this commit yet.
 
 ### Remaining risks / next action
 
-First inspect CI on current HEAD. If green, independently challenge the pre-apply guard for non-Git directories and for provider changes spanning both BedRock-owned and externally modified paths. Keep the fail-closed rule: never overwrite user work merely to complete an autonomous run. Provider and verification subprocesses still run with local user permissions; no sandbox-security claim should be made.
+First inspect run `35492245417` and repair any actual failure. Separately, treat descendant-process termination as an explicit known limitation: provider/verifier commands may spawn children that outlive cancellation or hold pipes open. If this becomes a required safety guarantee, design cross-platform process-tree termination deliberately rather than encoding it accidentally in a unit test. Provider and verification subprocesses still execute with local user permissions; no sandbox-security claim should be made.
