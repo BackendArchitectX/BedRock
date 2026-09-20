@@ -101,6 +101,22 @@ jobs:
           test "$(cat "$foreign/user.txt")" = 'preserve me'
           grep -q 'refusing to reuse' "$RUNNER_TEMP/foreign.log"
 
+          # A symlink workspace root must never inherit ownership from or clean its
+          # target, even when the target carries a valid BedRock ownership marker.
+          symlink_target="$RUNNER_TEMP/symlink-target"
+          symlink_work="$RUNNER_TEMP/symlink-workspace"
+          mkdir "$symlink_target"
+          printf 'BedRock demo workspace\n' > "$symlink_target/.bedrock-demo-owned"
+          printf 'preserve me\n' > "$symlink_target/user.txt"
+          ln -s "$symlink_target" "$symlink_work"
+          set +e
+          BEDROCK_DEMO_DIR="$symlink_work" go run ./scripts/demo.go > "$RUNNER_TEMP/symlink.log" 2>&1
+          symlink_exit=$?
+          set -e
+          test "$symlink_exit" -ne 0
+          test "$(cat "$symlink_target/user.txt")" = 'preserve me'
+          grep -q 'refusing to use symlink' "$RUNNER_TEMP/symlink.log"
+
           # Even a forged ownership marker must not allow the launcher to treat the
           # checkout itself as disposable demo state.
           printf 'BedRock demo workspace\n' > .bedrock-demo-owned
