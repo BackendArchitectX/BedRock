@@ -53,8 +53,23 @@ func TestDirtyPathsProtectsNestedRepositoryRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := dirty["nested/owned.txt"]; !ok {
-		t.Fatalf("nested dirty path was not protected: %#v", dirty)
+	if _, ok := dirty["owned.txt"]; !ok {
+		t.Fatalf("nested dirty path was not relative to run root: %#v", dirty)
+	}
+	if _, wrong := dirty["nested/owned.txt"]; wrong {
+		t.Fatalf("nested dirty path used enclosing worktree coordinates: %#v", dirty)
+	}
+
+	set := NewChangeSet()
+	if err := set.Apply(nested, []FileChange{{Path: "owned.txt", Content: "overwrite"}}, dirty); err == nil {
+		t.Fatal("expected nested dirty file overwrite to be rejected")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "user work" {
+		t.Fatalf("nested dirty file changed: %q", data)
 	}
 }
 
