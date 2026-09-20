@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+const demoMarker = "BedRock demo workspace\n"
+
 func fail(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "BedRock demo: "+format+"\n", args...)
 	os.Exit(1)
@@ -63,6 +65,13 @@ func run() error {
 		if !markerInfo.Mode().IsRegular() {
 			return fmt.Errorf("refusing to reuse %s because its BedRock ownership marker is not a regular file", work)
 		}
+		markerContents, markerErr := os.ReadFile(marker)
+		if markerErr != nil {
+			return fmt.Errorf("inspect BedRock ownership marker: %w", markerErr)
+		}
+		if string(markerContents) != demoMarker {
+			return fmt.Errorf("refusing to reuse %s because its BedRock ownership marker is invalid", work)
+		}
 	} else if os.IsNotExist(statErr) {
 		newWorkspace = true
 	} else {
@@ -76,7 +85,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("mark demo directory: %w", err)
 		}
-		if _, err := markerFile.WriteString("BedRock demo workspace\n"); err != nil {
+		if _, err := markerFile.WriteString(demoMarker); err != nil {
 			_ = markerFile.Close()
 			return fmt.Errorf("mark demo directory: %w", err)
 		}
