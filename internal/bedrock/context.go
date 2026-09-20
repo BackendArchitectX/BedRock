@@ -2,6 +2,7 @@ package bedrock
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
