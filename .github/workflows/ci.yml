@@ -108,19 +108,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "canonical launcher rerun failed with exit code $LASTEXITCODE`n$($rerun -join "`n")" }
           if (-not ($rerun -match '^BedRock demo: READY$')) { throw 'rerun missing READY status' }
 
-          # The ownership guard must preserve a foreign Windows workspace too.
+          # The ownership guard must preserve a foreign Windows workspace too. Use Start-Process
+          # so the intentionally non-zero native exit is data to assert, not a PowerShell error.
           $foreign = Join-Path $env:RUNNER_TEMP 'foreign-workspace-windows'
           New-Item -ItemType Directory -Path $foreign | Out-Null
           Set-Content -Path (Join-Path $foreign 'user.txt') -Value 'preserve me' -NoNewline
           $env:BEDROCK_DEMO_DIR = $foreign
-          $oldNativePreference = $PSNativeCommandUseErrorActionPreference
-          try {
-            $PSNativeCommandUseErrorActionPreference = $false
-            $foreignLog = @(go run ./scripts/demo.go 2>&1)
-            $foreignExit = $LASTEXITCODE
-          } finally {
-            $PSNativeCommandUseErrorActionPreference = $oldNativePreference
-          }
-          if ($foreignExit -eq 0) { throw 'launcher unexpectedly accepted foreign workspace' }
+          $foreignOut = Join-Path $env:RUNNER_TEMP 'foreign-workspace.stdout.log'
+          $foreignErr = Join-Path $env:RUNNER_TEMP 'foreign-workspace.stderr.log'
+          $process = Start-Process -FilePath 'go' -ArgumentList @('run', './scripts/demo.go') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $foreignOut -RedirectStandardError $foreignErr
+          $foreignLog = @((Get-Content $foreignOut -ErrorAction SilentlyContinue), (Get-Content $foreignErr -ErrorAction SilentlyContinue))
+          if ($process.ExitCode -eq 0) { throw 'launcher unexpectedly accepted foreign workspace' }
           if ((Get-Content (Join-Path $foreign 'user.txt') -Raw) -ne 'preserve me') { throw 'foreign sentinel was modified' }
           if (-not ($foreignLog -match 'refusing to reuse')) { throw "missing foreign-workspace refusal diagnostic`n$($foreignLog -join "`n")" }
