@@ -2,6 +2,7 @@ package bedrock
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -63,6 +64,51 @@ func TestSnapshotExcludesLikelySecretFiles(t *testing.T) {
 	} {
 		if paths[secret] {
 			t.Errorf("secret-like file %q leaked into provider context", secret)
+		}
+	}
+}
+
+func TestSnapshotExcludesGitIgnoredFiles(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	root := t.TempDir()
+	if err := exec.Command("git", "-C", root, "init", "-q").Run(); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		".gitignore":          "local/\n*.private\n",
+		"main.go":             "package main\n",
+		"local/notes.txt":     "private local notes\n",
+		"config.private":      "token=secret\n",
+		"config/example.yaml": "server: local\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := Snapshot(root, "inspect configuration", 100, 1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make(map[string]bool, len(got))
+	for _, file := range got {
+		paths[file.Path] = true
+	}
+	for _, safe := range []string{".gitignore", "main.go", "config/example.yaml"} {
+		if !paths[safe] {
+			t.Errorf("non-ignored context file %q was unexpectedly excluded", safe)
+		}
+	}
+	for _, ignored := range []string{"local/notes.txt", "config.private"} {
+		if paths[ignored] {
+			t.Errorf("git-ignored file %q leaked into provider context", ignored)
 		}
 	}
 }
