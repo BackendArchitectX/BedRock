@@ -1,27 +1,28 @@
 # Latest engineering handoff
 
-## 2026-09-20 — repair-attempt mutation guard
+## 2026-09-20 — integration and concurrent-edit safety review
 
 ### Current state
 
-BedRock remains a Go 1.22 local-first orchestration prototype on `main`. Before this pass, CI run `35487275560` on `064a9b202ec8218b0259396cef1b714e6b26eb0f` completed successfully.
+BedRock remains a Go 1.22 local-first orchestration prototype on `main`. The latest source HEAD inspected before this documentation pass was `703c35b75b986358233b924bf76c0ea49b98e75f`, and GitHub Actions run `35488309815` completed successfully on that exact commit.
 
-### Work completed
+### Work reviewed
 
-- Re-inspected current `main`, recent commits, CI, `docs/ENGINEERING_LEDGER.md`, runtime change tracking, engine retry behavior, and existing concurrency tests.
-- Challenged the new provider-execution mutation guard and found a second-attempt data-loss hole: after a failed verification, the engine removed every previously changed path from the fresh dirty-path set without checking whether the file still contained BedRock's last write. A user edit between repair attempts could therefore be overwritten by the retry.
-- Added `ChangeSet.ExcludeOwnWrites`, which removes a dirty path from protection only when its current bytes still exactly match BedRock's last recorded write. Missing or externally changed files remain protected.
-- Replaced the engine's unconditional deletion of previously changed paths with that ownership check.
-- Added `TestEnginePreservesTargetChangedBetweenRepairAttempts`, which performs a real temporary Git workflow, causes the first provider edit to fail verification, mutates the target externally during the second provider call, and requires BedRock to reject the overwrite and preserve the external contents.
+- Re-inspected current `main`, recent commits, CI, `docs/ENGINEERING_LEDGER.md`, README, runtime change tracking, retry behavior, rollback behavior, and the preceding mutation-guard handoff.
+- Confirmed the repair-attempt mutation guard is now in current source: BedRock removes a dirty path from protection only when its current bytes still match BedRock's last recorded write. External edits between repair attempts therefore remain protected.
+- Confirmed rollback similarly refuses to overwrite or recreate paths changed or removed after BedRock wrote them.
+- Confirmed the previously pending source/test lineage reached green CI through descendant `703c35b7`.
+- Updated README safety claims to match the implemented concurrent-edit protections and explicitly documented the remaining final check-to-write race instead of implying transactional filesystem safety.
+- Added no dependency, runtime subsystem, scheduler behavior, provider abstraction, or feature surface in this pass.
 
 ### Verification actually observed
 
-- Baseline CI run `35487275560` on `064a9b202ec8218b0259396cef1b714e6b26eb0f`: **PASS**.
-- CI run `35487745993` on the first source commit failed only at `gofmt` because `changes.go` lacked a trailing newline; vet/tests/race/smokes were skipped. The exact formatter log was inspected and the newline was fixed in `809c5642b52d119787023e074e6cb56c774caafc`.
-- The new regression test file also received a terminating newline in `086bb048ec84ef01f716c9337d26fa7b2c3bb875`.
-- CI for the final source + regression-test HEAD was not yet visible/completed when this handoff was written. Therefore the new behavior is **UNVERIFIED** until a run containing `086bb048...` (or a descendant containing it) completes successfully.
-- No local Go execution is claimed; this pass used the connected GitHub repository/API.
+GitHub Actions run `35488309815` on `703c35b75b986358233b924bf76c0ea49b98e75f`: **PASS**. This supersedes the prior handoff's pending-CI status for the repair-attempt mutation guard.
+
+No local Go execution is claimed in this pass; repository access used the connected GitHub API. The README/handoff-only commits created after the verified source HEAD must not be treated as new runtime verification, although they do not alter executable code.
 
 ### Remaining risks / next action
 
-First inspect CI on the current HEAD and repair any actual format/vet/unit/race/CLI-smoke failure. If green, challenge the remaining time-of-check/time-of-use window between the final dirty-path check and `os.WriteFile`: the current guard detects mutations made during provider execution and between repair attempts, but another process could still race after the check and before the write. Do not add a complex locking subsystem unless a simple safe write strategy can materially reduce that window. Provider and verification subprocesses still run with local-user permissions; no sandbox claim should be made.
+The main remaining file-write race is the narrow time-of-check/time-of-use interval between the final ownership/dirty-path check and `os.WriteFile`. Do not solve this with distributed locks or scheduler-derived infrastructure. Before changing code, evaluate whether a small cross-platform write primitive can materially improve compare-and-write semantics without creating false atomicity claims; if not, keep the limitation explicit and prioritize higher-value release work.
+
+Provider and verification subprocesses still run with local-user permissions; no sandbox claim should be made. Windows/macOS remain unverified. No live model-provider end-to-end scenario is claimed. Before adding broad features, prefer clean-state installation/build validation, independent security review of provider/tool boundaries, and documentation accuracy.
