@@ -2,17 +2,17 @@
 
 BedRock is an early Go 1.22 prototype for local-first, owner-controlled AI software-engineering orchestration. It currently proves one narrow vertical slice: gather bounded repository context, invoke a provider-neutral command adapter, apply bounded file changes without overwriting pre-existing dirty paths, run explicit verification commands, retry with failure evidence, and roll back BedRock-authored changes when verification never succeeds.
 
-BedRock is **not** production-ready. Provider-specific integrations, sandboxing beyond the current file/Git safeguards, broad cross-platform validation, and a polished adapter ecosystem are not implemented yet.
+BedRock is **not** production-ready. Provider-specific integrations, hardened subprocess sandboxing, broad cross-platform validation, and a polished adapter ecosystem are not implemented yet.
 
 ## One-step start
 
-A fresh supported checkout has one canonical demo/start path:
+A fresh supported checkout has exactly one canonical demo/start command:
 
 ```sh
-./scripts/demo.sh
+go run ./scripts/demo.go
 ```
 
-Requirements are Go 1.22+ and Git on `PATH`. The launcher validates them, creates a fresh disposable workspace, builds BedRock and the deterministic provider, runs the complete orchestration path, waits for actual verification, and prints `READY` plus the workspace/result paths only after the result is proven. It needs no credentials or external services. Re-running it safely recreates only its dedicated demo directory (`$BEDROCK_DEMO_DIR`, or `${TMPDIR:-/tmp}/bedrock-demo`).
+Run it from the BedRock checkout root. Go 1.22+ and Git must be on `PATH`; the launcher validates both, creates a disposable owned workspace, builds the real BedRock CLI and deterministic provider, runs the complete orchestration path, waits for actual verification, and prints `READY` plus the workspace/result paths only after the result is proven. It needs no credentials or external services. Re-running it safely recreates only BedRock-owned `bin` and `repository` children inside `$BEDROCK_DEMO_DIR` (or the operating-system temporary `bedrock-demo` directory), and it refuses to reuse an existing unmarked directory.
 
 This is the complete usable **deterministic prototype demo**, not a claim of live-model readiness. There is currently no backend server or web UI, so there are no application URLs to print. A real model still requires an external provider adapter as described below.
 
@@ -100,7 +100,7 @@ Repository content is context data, not trusted BedRock control instructions. Pr
 - There is no built-in OpenAI, Anthropic, or local-model adapter; an external adapter executable is required for live-model use.
 - Provider execution is a local subprocess, not a hardened OS/container sandbox.
 - Verification commands are user-supplied shell commands and execute with the user's local permissions.
-- The canonical one-step launcher is a POSIX-shell path and is intended for Linux/macOS-like environments; Windows has not been independently verified.
+- The canonical Go launcher is cross-platform by implementation and is exercised on Linux CI; Windows one-step execution is not yet independently proven in CI.
 - Deterministic fake-provider end-to-end CLI scenarios are covered in CI, but no live model-provider end-to-end scenario is claimed.
 - Secret redaction is heuristic.
 - Concurrent-edit protection narrows overwrite races but does not provide filesystem transactions.
