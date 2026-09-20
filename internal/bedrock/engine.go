@@ -109,6 +109,19 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 		return cause
 	}
 
+	// Verification is evidence, not a task-completion oracle. Capture the repository's
+	// starting state so later checks can distinguish already-green from improved runs.
+	if e.Verifier != nil {
+		results, verifyErr := e.Verifier.Verify(ctx, root)
+		evidence.BaselineVerification = results
+		if verifyErr == nil {
+			verifyErr = verificationResultsError(results)
+		}
+		if verifyErr != nil {
+			failure = verificationFailure(verifyErr, results)
+		}
+	}
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		evidence.Attempts = attempt
 		files, err := Snapshot(root, task, e.ContextMaxFiles, e.ContextMaxBytes)
@@ -129,6 +142,7 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 			failure = err.Error()
 			return finish(rollback(err))
 		}
+		evidence.ProviderSummaries = append(evidence.ProviderSummaries, response.Summary)
 
 		if err := changes.ValidateOwnWrites(root); err != nil {
 			failure = err.Error()
@@ -161,8 +175,10 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 			if len(results) == 0 {
 				evidence.Status = "UNVERIFIED"
 			} else {
-				evidence.Status = "VERIFIED"
+				// Passing configured checks is intentionally not represented as task completion.
+				evidence.Status = "CHECKS_PASSED"
 			}
+			failure = ""
 			return finish(nil)
 		}
 
