@@ -1,25 +1,22 @@
 # Latest engineering handoff
 
-## 2026-09-20 — protect checkout from launcher workspace mutation
+## 2026-09-20 — verification-failure recovery proven
 
 ### Current state
 
-BedRock's canonical fresh-checkout start remains `go run ./scripts/demo.go`. This pass reconciled against current upstream `main` at `673fa3d`, whose CI and dedicated demo-path-safety workflow both completed successfully. That baseline already rejects direct and ancestor symlinks for `BEDROCK_DEMO_DIR`.
+Reconciled against current `origin/main` at `217ae2cc91378dc2af2e128b1381b47afc85857a`. The canonical fresh-checkout path remains `go run ./scripts/demo.go`; scheduler staggering is external only and has no product/runtime meaning.
 
-### Work completed
+### Work verified
 
-- Found an uncovered overlap direction: the launcher rejected a workspace that contained the checkout, but still allowed `BEDROCK_DEMO_DIR` itself to be inside the checkout. A fresh in-checkout path could therefore create launcher-owned files inside the user's source tree.
-- `7576403` (`fix(demo): reject checkout-contained workspace`) now rejects a workspace equal to or beneath the checkout before marker creation or cleanup. The existing inverse guard still rejects a workspace that contains the checkout.
-- `3883822` (`test(demo): protect checkout from workspace mutation`) adds an integration assertion that an in-checkout workspace is rejected, remains nonexistent, and emits the intended diagnostic.
-- No force push or history rewrite was used.
+- CI run `35520365385` for exact HEAD `217ae2cc` completed successfully.
+- The new verification-stage recovery regression executes a real canonical launch with injected verification failure after provider output, requires the launch to fail without `READY`, requires generated `result.txt` to be absent after rollback, preserves unrelated caller state, then reruns the canonical launcher and requires `status: VERIFIED`, `READY`, and a fresh `result.txt = good`.
+- This closes the prior ledger's verification-stage recovery gap. Provider-failure recovery and repository-init failure recovery were already covered on preceding green descendants.
+- Preserve the user's Windows evidence: ordinary Windows build/test/vet are valid; Windows race is not executed due to the independently reproduced ThreadSanitizer startup failure. Linux CI remains the authoritative race gate.
 
-### Verification actually observed
+### Challenge / next action
 
-- Baseline `673fa3d`: CI run `35507972281` and Demo path safety run `35507972295` both **PASS**.
-- CI for `7576403` had started when inspected; current descendant `3883822` had not yet produced a completed run. The new protection is therefore **UNVERIFIED on current HEAD** and must not be reported as passing yet.
-- No local Go execution is claimed in this pass.
-- Preserve the user's Windows evidence: ordinary build/test/vet pass locally; Windows `-race` is **not executed due to ThreadSanitizer startup failure**. Linux CI remains the authoritative race-detector gate.
+Do not spend the next pass adding more launcher path denylist cases unless a concrete defect is found. The deterministic one-step prototype is now well covered across startup, rerun, path ownership, init failure, provider failure, verification failure, rollback, and Windows execution.
 
-### Remaining risks / next action
+The highest-value product gap is functional: BedRock still requires an external provider executable for a real model. Next evaluate and implement the smallest built-in self-hostable provider path, preferably an OpenAI-compatible HTTP adapter usable with local servers such as Ollama/vLLM-compatible endpoints, without coupling the orchestration core to one vendor. Keep the deterministic zero-secret launcher as the default CI acceptance path. Any live-provider mode must validate endpoint/model configuration explicitly, never fabricate secrets, bound HTTP execution/output, and must not claim readiness until the configured provider is actually reachable.
 
-First inspect CI and Demo path safety for `3883822` or its current descendant and repair any real failure. If green, continue from the actual latest `origin/main`; do not add scheduler-derived runtime behavior. Provider subprocesses and explicit verification commands still execute with local-user permissions, so BedRock must not claim sandboxing.
+Provider subprocesses and verification commands still execute with local-user permissions; do not claim sandboxing.
