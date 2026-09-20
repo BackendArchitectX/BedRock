@@ -161,7 +161,7 @@ func TestEngineRejectsTargetChangedDuringProviderExecution(t *testing.T) {
 
 	engine := Engine{Provider: mutatingProvider{root: root}, MaxAttempts: 1}
 	result, err := engine.Run(context.Background(), root, "change result")
-	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite dirty path") {
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite pre-existing dirty path") {
 		t.Fatalf("expected concurrent mutation rejection, got %v", err)
 	}
 	if !result.Evidence.RolledBack {
