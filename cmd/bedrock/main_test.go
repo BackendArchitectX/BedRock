@@ -49,7 +49,10 @@ func TestRunWithBuiltInHTTPProvider(t *testing.T) {
 			return
 		}
 		var request struct {
-			Model string `json:"model"`
+			Model    string `json:"model"`
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Errorf("decode request: %v", err)
@@ -58,6 +61,24 @@ func TestRunWithBuiltInHTTPProvider(t *testing.T) {
 		}
 		if request.Model != model {
 			t.Errorf("model = %q", request.Model)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if len(request.Messages) != 2 {
+			t.Errorf("messages = %d", len(request.Messages))
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var providerRequest struct {
+			VerificationCommands []string `json:"verificationCommands"`
+		}
+		if err := json.Unmarshal([]byte(request.Messages[1].Content), &providerRequest); err != nil {
+			t.Errorf("decode provider context: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if len(providerRequest.VerificationCommands) != 1 || providerRequest.VerificationCommands[0] != "git diff --check" {
+			t.Errorf("verification commands = %#v", providerRequest.VerificationCommands)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
