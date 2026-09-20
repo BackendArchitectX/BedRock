@@ -1,24 +1,31 @@
 # Verification handoff
 
-## 2026-09-20 connection-secret verification pass
+## 2026-09-20 nested Git context verification pass
 
 ### Repository reality inspected
 
 - Branch: `main`.
-- Pre-pass HEAD: `f37696035530fd32bdf89603f67c772dbcd5a45e`.
-- Recent source, tests, engineering ledger, and GitHub Actions history were inspected before changes.
-- Actions run `35477286154` for the pre-pass HEAD completed successfully; Format, Vet, Test, Race test, successful CLI smoke, and failure/rollback CLI smoke all executed successfully.
+- Pre-pass HEAD: `e52f1b4d79df216bbcdc831d407cd6062c8bf2a5`.
+- Recent commits, `docs/ENGINEERING_LEDGER.md`, context implementation/tests, and GitHub Actions state were inspected before changes.
+- The immediately preceding Git-ignore regression run `35479867536` on commit `fff324804f4732e54f64b3aeac282274adf156b5` completed successfully.
 
 ### Defect found and fixed
 
-Verification evidence redaction detected conventional token/secret/password/API-key names, but common credential-bearing connection variables such as `DATABASE_URL`, `DATABASE_URI`, `*_CONNECTION_STRING`, and `DB_PASS` were not classified as sensitive. A verification command printing one of those values could therefore persist credentials in run evidence.
+The Git-aware context filter only treated a directory as a Git worktree when `<root>/.git` existed. A valid CLI invocation such as `bedrock run --repo ./service` from a subdirectory of a larger Git repository has no `service/.git`, so BedRock fell back to raw filesystem scanning and could send parent-`.gitignore`-excluded files to the provider.
 
-Commit `1fd63f9eacef63429d2e209526197cd39028d42f` extends the sensitive-name classifier for these connection-secret patterns. Commit `11f46fe9af637a111918e09a736dcf2b69873733` adds regression coverage for the newly recognized names.
+The context detector now asks Git whether the selected root is inside a worktree and uses `git ls-files -co --exclude-standard -z` there. This also naturally supports linked-worktree `.git` files. A deterministic regression test initializes a repository, selects a nested `service` directory as the BedRock root, and proves an ignored `*.private` file is excluded while ordinary nested files remain available.
 
-### Verification state
+Commits:
 
-The latest fully completed evidence inspected before these commits is Actions run `35477286154`, which passed the complete CI suite listed above. A new Actions run began for the source fix while this pass was active. The regression-test commit is therefore **UNVERIFIED** until a run containing commit `11f46fe9af637a111918e09a736dcf2b69873733` completes successfully; do not carry the earlier PASS forward to these changes.
+- `fb4e0ec67c37c3b6cc7ed90781b4544e8a5afcd5` initial nested-worktree fix; this intermediate commit missed the `errors` import and is not considered verified.
+- `2fbee588ea6db4f61851f45deadc09d7bf39b60b` restores compilation by adding the required import.
+- `1d7a2fb76fa7b75f0d0167d1e91f33bd18484678` adds the nested-root regression test.
+
+### Tests actually executed / evidence
+
+- Independently reproduced Git path semantics in an isolated temporary repository: from a nested `service` directory, `git ls-files -co --exclude-standard -z` returned `config/example` and `main.go` while excluding `local.private` matched by the parent `.gitignore`.
+- GitHub Actions run `35480595297` started on regression-test HEAD `1d7a2fb76fa7b75f0d0167d1e91f33bd18484678`. At last inspection it was still `in_progress` during setup, so Format, Vet, Test, Race test, CLI smoke, and rollback smoke are **not yet claimed as passing for this HEAD**.
 
 ### Remaining risks / next action
 
-First inspect CI for current HEAD and repair any failure. Secret redaction remains heuristic rather than a general data-loss-prevention system; avoid claiming arbitrary secrets can never reach evidence. Provider and verifier subprocesses still run with local user permissions, and Windows/macOS behavior remains unverified. The next independent pass should prioritize an actual trust-boundary defect or portability gap rather than adding orchestration abstractions.
+First inspect run `35480595297` and repair any actual failure before adding features. The Git probe currently treats a normal non-zero `git rev-parse` exit as a non-Git directory; a later hardening pass should consider fail-closed behavior when Git metadata is visibly present but Git itself rejects/cannot inspect the worktree. Provider and verifier subprocesses still execute with local user permissions, and Windows/macOS remain unverified.
