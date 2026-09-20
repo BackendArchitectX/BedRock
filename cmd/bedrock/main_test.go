@@ -42,6 +42,7 @@ func TestRunWithBuiltInHTTPProvider(t *testing.T) {
 		apiKey = "integration-secret"
 		model  = "local-model"
 	)
+	verifyCommand := "echo " + apiKey + " >/dev/null && git diff --check"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer "+apiKey {
 			t.Errorf("Authorization = %q", got)
@@ -77,8 +78,14 @@ func TestRunWithBuiltInHTTPProvider(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if len(providerRequest.VerificationCommands) != 1 || providerRequest.VerificationCommands[0] != "git diff --check" {
+		if len(providerRequest.VerificationCommands) != 1 {
 			t.Errorf("verification commands = %#v", providerRequest.VerificationCommands)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		plan := providerRequest.VerificationCommands[0]
+		if strings.Contains(plan, apiKey) || !strings.Contains(plan, "[REDACTED]") || !strings.Contains(plan, "git diff --check") {
+			t.Errorf("unsafe verification plan = %q", plan)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -101,7 +108,7 @@ func TestRunWithBuiltInHTTPProvider(t *testing.T) {
 		"--provider-model", model,
 		"--provider-api-key-env", "BEDROCK_TEST_API_KEY",
 		"--max-attempts", "1",
-		"--verify", "git diff --check",
+		"--verify", verifyCommand,
 	})
 	if err != nil {
 		t.Fatal(err)
