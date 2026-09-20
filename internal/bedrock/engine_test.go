@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type scriptedProvider struct {
@@ -34,6 +35,17 @@ func (p mutatingProvider) Execute(_ context.Context, _ ProviderRequest) (Provide
 		return ProviderResponse{}, err
 	}
 	return ProviderResponse{Changes: []FileChange{{Path: "result.txt", Content: "provider edit"}}}, nil
+}
+
+type blockingProvider struct {
+	started chan struct{}
+}
+
+func (p blockingProvider) Name() string { return "blocking-test" }
+func (p blockingProvider) Execute(ctx context.Context, _ ProviderRequest) (ProviderResponse, error) {
+	close(p.started)
+	<-ctx.Done()
+	return ProviderResponse{}, ctx.Err()
 }
 
 type fileContentVerifier struct {
@@ -170,5 +182,34 @@ func TestEngineRejectsTargetChangedDuringProviderExecution(t *testing.T) {
 	data, readErr := os.ReadFile(path)
 	if readErr != nil || string(data) != "external edit" {
 		t.Fatalf("external edit was overwritten: %q err=%v", data, readErr)
+	}
+}
+
+func TestEnginePropagatesCancellationToProvider(t *testing.T) {
+	root := t.TempDir()
+	started := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	engine := Engine{Provider: blockingProvider{started: started}, MaxAttempts: 1}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := engine.Run(ctx, root, "wait for cancellation")
+		done <- err
+	}()
+
+	select {
+	case <-started:
+		cancel()
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider did not start")
+	}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("run error=%v, want context cancellation", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("engine did not stop after cancellation")
 	}
 }
