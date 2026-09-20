@@ -4,6 +4,25 @@
 
 BedRock is a Go 1.22 local-first orchestration prototype on `main`. The current vertical slice accepts a task, gathers bounded repository context, invokes a provider-neutral command adapter, applies bounded file changes while protecting pre-existing dirty paths and repository metadata, runs explicit verification commands, retries once by default with failure evidence, and rolls changes back when verification never succeeds.
 
+## 2026-09-20 credential-context hardening pass
+
+### Work completed
+
+- Re-inspected current `main`, recent commits, CI, context selection, tests, TODO search, and this ledger rather than carrying forward old PASS claims.
+- Confirmed CI run `35478912967` succeeded on the preceding context-filter HEAD `2bc70a1dcadbe775ea34f79fecf0e105df6c6c2d`.
+- Found remaining provider-context credential exposures not covered by the filename filter: `.aws`, `.azure`, `.docker`, `.kube`, and `.gnupg` credential directories; `.git-credentials`; and Terraform state files.
+- Extended the existing small denylist instead of adding content-scanning or a new security subsystem. Added regression fixtures for each new class and retained safe ordinary source/configuration examples.
+
+### Tests actually executed / evidence
+
+- No local Go execution is claimed because this run used the connected GitHub repository API rather than a mounted checkout.
+- GitHub Actions run `35479268886` started for source commit `d3fa36078f33c059a5906291d59d15c0834edd68` and was still `in_progress` when last inspected.
+- The subsequent regression-test commit `17c521266432b5d36009c4e92729a50d28da48f0` did not yet have a visible completed CI run when this note was written. Therefore the new source + tests remain **UNVERIFIED** until CI executes against a commit containing both.
+
+### Remaining risks / next action
+
+First inspect CI on current HEAD and repair any formatter/compiler/test/race/smoke failure before adding features. Then challenge context safety against additional high-value credential locations without turning the denylist into broad false-positive filtering. Filename filtering is defense in depth, not a guarantee that arbitrary ordinary source/config files contain no secrets. Provider subprocesses and user-supplied verification commands still run with local user permissions; no sandbox claim should be made.
+
 ## 2026-09-20 CLI vertical-slice challenge pass
 
 ### Work completed
