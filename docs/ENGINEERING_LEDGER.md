@@ -17,10 +17,10 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 ### Verified baseline
 
 - Reconciled against current rewritten `origin/main`; superseded pre-rewrite hashes remain superseded.
-- Current pre-ledger baseline `1eb81700c957c5dfa1b9d83dd6f8d735c4c93357` (`test(demo): prove partial workspace recovery`) has successful GitHub Actions CI run `35510290126` and Demo path safety run `35510290058`.
-- Linux CI executes format, vet, unit tests, `go test -race ./...`, prerequisite-failure non-mutation, canonical one-step start/rerun, foreign-workspace refusal, direct symlink-root refusal, checkout protection, and CLI failure/rollback smoke.
-- Demo path safety independently proves a workspace beneath a symlinked ancestor is rejected without mutating its physical target, a checkout-contained workspace is rejected before creation, and an interrupted owned workspace is recovered while unrelated user state is preserved.
-- Windows CI executes the canonical one-step launcher, rerun/idempotency, foreign-workspace refusal, and checkout protection.
+- Current pre-ledger baseline `42da4d4bf6bd901088a9a7b0c08adbfd5cce043f` (`ci: remove redundant demo path safety workflow`) has successful GitHub Actions CI run `35511819998`.
+- Linux CI actually executed and passed prerequisite-failure non-mutation, format, `go vet ./...`, `go test ./...`, `go test -race ./...`, canonical one-step start/rerun, foreign-workspace refusal, direct and ancestor symlink-workspace refusal, checkout protection, interrupted-owned-workspace recovery, and CLI failure/rollback smoke.
+- Windows CI actually executed and passed the canonical one-step launcher, rerun/idempotency, foreign-workspace refusal, and checkout protection.
+- The formerly separate Demo path safety workflow was removed only after its unique ancestor-symlink and partial-recovery assertions were consolidated into primary CI; commit `2c7a1e5e8a4774e31c5a271651acaf1ecb85f6a9` had also completed the old dedicated workflow successfully before removal.
 - Windows race detection is not executed because ThreadSanitizer could not initialize in the independently isolated local Windows environment; Linux CI remains the authoritative race gate.
 - Current reachable commits map to the `BackendArchitectX` GitHub account/noreply identity; superseded prohibited author history is not treated as active.
 
@@ -32,11 +32,9 @@ Current automated evidence covers rerun/idempotency, foreign-workspace refusal, 
 
 ### Remaining risks / next action
 
-Before any new edit, fetch current `origin/main` because multiple writers may advance it. The prior ledger's symlinked-ancestor gap is closed and independently green; do not reimplement it.
+Before any new edit, fetch current `origin/main` because multiple writers may advance it. Launcher path-safety coverage is now consolidated in primary CI; do not recreate the removed duplicate workflow.
 
-The release-quality cleanup target is now workflow duplication: `.github/workflows/demo-path-safety.yml` repeats checkout/setup and a checkout-protection case already present in primary CI. Consolidate the unique symlink-ancestor and interrupted-workspace regressions into the primary launcher acceptance job, then remove the redundant workflow only after the consolidated exact HEAD is green. Keep Windows launcher verification and Linux `-race` as distinct platform gates.
-
-After that, prioritize clean-checkout/release validation, failed dependency/tool diagnostics, dependency health, and documentation accuracy over feature growth.
+Prioritize clean-checkout/release validation and additional failure-path evidence over feature growth. In particular, independently challenge failures after workspace ownership is established but before `READY` (build/init/provider/verification interruption) and prove rerun recovery preserves unrelated state. Keep prerequisite diagnostics useful and fail before mutation whenever the prerequisite can be checked up front.
 
 Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made. Live-provider behavior and broader OS/environment combinations remain outside the deterministic demo proof.
 
