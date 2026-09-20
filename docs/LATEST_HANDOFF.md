@@ -1,24 +1,25 @@
 # Latest engineering handoff
 
-## 2026-09-20 — canonical one-step launcher CI repair
+## 2026-09-20 — one-step prerequisite failure coverage
 
 ### Current state
 
-BedRock remains a Go 1.22 local-first orchestration prototype on `main`. The repository has moved beyond the rewritten `db81bb1` baseline: `53c9938` added the cross-platform Go launcher, `1ce6e2b` made `go run ./scripts/demo.go` the documented canonical start, and `227ac7d` changed CI to exercise that exact entrypoint. The preceding `1ce6e2b` CI run `35496897793` completed successfully. Run `35496909844` on `227ac7d` failed only in the canonical one-step-start stage; format, vet, unit tests, and race tests all passed first.
+BedRock's canonical fresh-checkout start remains `go run ./scripts/demo.go`. Before this pass, current `main` was `94e9dde` and CI run `35502370111` completed successfully. That baseline includes Linux and Windows execution of the canonical launcher, rerun/idempotency checks, foreign-workspace refusal, checkout-root cleanup protection, Linux race testing, and removal of the obsolete shell launcher.
 
 ### Work completed
 
-- Re-inspected current `main`, recent commits, CI, README, the canonical Go launcher, engineering ledger, and prior handoff rather than relying on the old rewritten baseline.
-- Read the actual failed workflow log. The real BedRock run reached `status: VERIFIED` and wrote `result.txt`; the launcher then rejected its own result because the deterministic provider intentionally writes `good\n` while `scripts/demo.go` compared the raw file bytes to `good`.
-- Repaired only that launcher postcondition: it now reports read failures separately and compares the verified result after trimming surrounding whitespace. The verifier still proves the semantic value `good`; readiness is not weakened or faked.
-- Source commit: `7e4e58290bccc70604755163e45ca8c5e846db65` (`fix(demo): accept verified line output`). GitHub attributes the commit to the `BackendArchitectX` account; no history rewrite was performed.
+- Reconciled against current upstream `main` before editing; did not rely on the older rewritten baseline or stale handoff.
+- Added an integration gate for the launcher's two unavoidable prerequisites. CI now compiles the real launcher, injects an unsupported `go1.21.13`, and proves it exits with the actionable Go 1.22+ diagnostic before creating `BEDROCK_DEMO_DIR`.
+- Added the equivalent missing-Git scenario using a Go-only PATH shim. It proves the launcher reports the missing Git prerequisite and leaves the requested workspace nonexistent.
+- Commit: `b46c239373b922500c6a01be0da15f32b2dc950c` (`test(demo): prove prerequisite failures are non-mutating`). GitHub attributes both author and committer to `BackendArchitectX`; no force push or history rewrite was used.
 
 ### Verification actually observed
 
-- Failed run `35496909844` on `227ac7d`: Format **PASS**, Vet **PASS**, Test **PASS**, Race test **PASS**, Canonical one-step start **FAIL**. Its log shows the orchestration itself returned `status: VERIFIED`, then the launcher's exact-byte postcheck failed.
-- Repair CI run `35497438578` on `7e4e58290bccc70604755163e45ca8c5e846db65` was **queued** at final inspection. Therefore the repair and complete one-step launcher are **UNVERIFIED** until that exact/current descendant run completes successfully.
-- No local Go execution is claimed in this pass; verification evidence came from the connected GitHub Actions run and logs.
+- Baseline CI `35502370111` on `94e9dde`: **PASS**.
+- At final inspection no Actions run was yet visible for `b46c239`; therefore the new prerequisite coverage is **UNVERIFIED**. Do not infer PASS from the baseline.
+- No local Go execution is claimed in this pass.
+- Preserve the user's Windows evidence: ordinary build/test/vet pass locally; Windows `-race` is **not executed due to ThreadSanitizer startup failure**. Linux CI remains the authoritative race-detector gate.
 
 ### Remaining risks / next action
 
-First inspect CI run `35497438578` (or a newer current-HEAD run) and repair any real failure before extending functionality. If green, the next one-step-start acceptance gap is independent Windows execution of the canonical `go run ./scripts/demo.go` path: the launcher has Windows-specific verification logic and is cross-platform by implementation, but current CI only exercises it on Linux. Preserve the user's Windows toolchain evidence: ordinary build/test/vet pass in a fresh shell; race testing additionally requires `CGO_ENABLED=1` and `C:\\msys64\\ucrt64\\bin` on PATH. Provider subprocesses and explicit verification commands still run with local-user permissions; do not claim sandboxing.
+First inspect CI for `b46c239` or its current descendant and repair any real failure before extending the launcher. If green, the one-step prototype path has positive Linux/Windows startup coverage plus negative prerequisite/workspace-safety coverage. The next engineering choice should then be driven by the actual product gap rather than adding scheduler-derived runtime behavior. Provider subprocesses and explicit verification commands still execute with local-user permissions; do not claim sandboxing.
