@@ -17,10 +17,12 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 ### Verified baseline
 
 - Reconciled against current rewritten `origin/main`; superseded pre-rewrite hashes remain superseded.
-- Exact product/test HEAD `e8cc01f9d9fc5a7b7470009acc2076a8c914231a` (`fix(demo): pass injected provider failure explicitly`) completed GitHub Actions CI run `35517914284` successfully.
-- Linux CI actually executed and passed prerequisite-failure non-mutation, format, `go vet ./...`, `go test ./...`, `go test -race ./...`, canonical one-step start/rerun and consolidated launcher safety/recovery tests, and CLI failure/rollback smoke.
+- Exact current HEAD `2acfbb842e317add604a07e850ebacd408d79b86` (`docs: record verification-failure recovery`) completed GitHub Actions CI run `35521102249` successfully.
+- Its product/test parent `217ae2cc91378dc2af2e128b1381b47afc85857a` completed CI run `35520365385` successfully.
+- Linux CI actually executed prerequisite-failure non-mutation, format, `go vet ./...`, `go test ./...`, `go test -race ./...`, canonical one-step start/rerun and consolidated launcher safety/recovery tests, and CLI failure/rollback smoke.
 - Windows CI actually executed and passed the canonical one-step launcher acceptance.
-- The provider-failure recovery regression now reaches the real provider boundary: the deterministic provider has an explicit test-only failure hook, the launcher opts that variable through BedRock's provider-environment allowlist only when requested, CI proves the injected provider attempt fails, and a subsequent normal canonical rerun reaches `READY` without carrying stale generated state forward or deleting unrelated caller state.
+- Verification-stage recovery is now covered after provider output exists: an injected verification failure must not report `READY`, generated `result.txt` is absent after rollback, unrelated caller state survives, and a subsequent canonical rerun reaches `status: VERIFIED` and `READY` with fresh expected output.
+- Provider-execution failure and repository-initialization failure recovery are also covered by preceding green descendants.
 - Windows race detection is not executed because ThreadSanitizer could not initialize in the independently isolated local Windows environment; Linux CI remains the authoritative race gate.
 - Current reachable commits map to the `BackendArchitectX` GitHub account/noreply identity; superseded prohibited author history is not treated as active.
 
@@ -28,13 +30,15 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 
 The deterministic prototype has one documented normal launcher, `go run ./scripts/demo.go`. README and CI use the same command. The launcher checks required tools/version before workspace mutation, requires an exact regular-file ownership marker for reuse, refuses dangerous roots, checkout-contained paths, direct symlink roots, and symlinked path components, rebuilds the CLI/provider, recreates only owned demo children, initializes the demo repository, waits for the real BedRock run and verification to finish, checks `result.txt`, and only then prints `READY`.
 
-Current automated evidence covers rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, direct and ancestor symlink-workspace refusal, interrupted owned-workspace recovery, recovery after injected repository-initialization failure, recovery after injected provider-execution failure, Linux success/failure orchestration, and Windows launcher execution. The deterministic default prototype therefore satisfies the current one-step-start acceptance gate. This does not imply live-model, server, web UI, or sandbox readiness.
+Current automated evidence covers rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, direct and ancestor symlink-workspace refusal, interrupted owned-workspace recovery, recovery after injected repository-initialization failure, provider-execution failure, and verification failure, Linux success/failure orchestration, rollback, and Windows launcher execution. The deterministic default prototype therefore satisfies the current one-step-start acceptance gate. This does not imply live-model, server, web UI, or sandbox readiness.
 
 ### Remaining risks / next action
 
-Before any new edit, fetch current `origin/main` because multiple writers may advance it. Launcher path-safety coverage is consolidated in primary CI; do not recreate the removed duplicate workflow.
+Before any new edit, fetch current `origin/main` because multiple writers may advance it. Launcher path-safety coverage is consolidated in primary CI; do not recreate the removed duplicate workflow or add scheduler-derived runtime behavior.
 
-Next independently challenge verification-stage failure after the provider has generated output. Prove the failed attempt rolls back generated state, a subsequent canonical rerun reaches `READY`, unrelated caller state survives, and no stale output/evidence from the failed verification can satisfy the successful rerun. Keep prerequisite diagnostics useful and fail before mutation whenever the prerequisite can be checked up front.
+The highest-value remaining functional gap is the lack of a built-in self-hostable live-model provider. Independently evaluate the smallest provider-neutral HTTP adapter for OpenAI-compatible local endpoints without coupling orchestration to one vendor. Keep the deterministic zero-secret launcher as the default acceptance path. Any live-provider path must explicitly validate endpoint and model configuration, avoid fabricating secrets, bound request duration and response size, preserve cancellation causes, redact explicitly supplied credentials from diagnostics, and must not claim readiness before the configured provider is actually reachable.
+
+The existing command-provider adapter also deserves an independent cancellation diagnostic regression: its timeout branch currently labels any non-nil derived context error as `provider timed out`, including cancellation inherited from the caller. Preserve `errors.Is` semantics while distinguishing caller cancellation from the provider's own timeout before extending provider functionality.
 
 Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made. Live-provider behavior and broader OS/environment combinations remain outside the deterministic demo proof.
 
