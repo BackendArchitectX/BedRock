@@ -17,10 +17,10 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 ### Verified baseline
 
 - Reconciled against current rewritten `origin/main`; superseded pre-rewrite hashes remain superseded.
-- Exact product/test HEAD `0559c9e167ffa519223167f89d32d58d38c7d317` (`test(demo): prove recovery after init failure`) completed GitHub Actions CI run `35514963854` successfully.
+- Exact product/test HEAD `e8cc01f9d9fc5a7b7470009acc2076a8c914231a` (`fix(demo): pass injected provider failure explicitly`) completed GitHub Actions CI run `35517914284` successfully.
 - Linux CI actually executed and passed prerequisite-failure non-mutation, format, `go vet ./...`, `go test ./...`, `go test -race ./...`, canonical one-step start/rerun and consolidated launcher safety/recovery tests, and CLI failure/rollback smoke.
 - Windows CI actually executed and passed the canonical one-step launcher acceptance.
-- The new init-failure regression injects a failing `git init` after workspace ownership is established, verifies a useful failure, then reruns normally and requires `READY`, the expected verified result, and preservation of unrelated caller state.
+- The provider-failure recovery regression now reaches the real provider boundary: the deterministic provider has an explicit test-only failure hook, the launcher opts that variable through BedRock's provider-environment allowlist only when requested, CI proves the injected provider attempt fails, and a subsequent normal canonical rerun reaches `READY` without carrying stale generated state forward or deleting unrelated caller state.
 - Windows race detection is not executed because ThreadSanitizer could not initialize in the independently isolated local Windows environment; Linux CI remains the authoritative race gate.
 - Current reachable commits map to the `BackendArchitectX` GitHub account/noreply identity; superseded prohibited author history is not treated as active.
 
@@ -28,13 +28,13 @@ It validates Go 1.22+ and Git before workspace mutation, protects caller-selecte
 
 The deterministic prototype has one documented normal launcher, `go run ./scripts/demo.go`. README and CI use the same command. The launcher checks required tools/version before workspace mutation, requires an exact regular-file ownership marker for reuse, refuses dangerous roots, checkout-contained paths, direct symlink roots, and symlinked path components, rebuilds the CLI/provider, recreates only owned demo children, initializes the demo repository, waits for the real BedRock run and verification to finish, checks `result.txt`, and only then prints `READY`.
 
-Current automated evidence covers rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, direct and ancestor symlink-workspace refusal, interrupted owned-workspace recovery, recovery after an injected repository-initialization failure, Linux success/failure orchestration, and Windows launcher execution. The deterministic default prototype therefore satisfies the current one-step-start acceptance gate. This does not imply live-model, server, web UI, or sandbox readiness.
+Current automated evidence covers rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, direct and ancestor symlink-workspace refusal, interrupted owned-workspace recovery, recovery after injected repository-initialization failure, recovery after injected provider-execution failure, Linux success/failure orchestration, and Windows launcher execution. The deterministic default prototype therefore satisfies the current one-step-start acceptance gate. This does not imply live-model, server, web UI, or sandbox readiness.
 
 ### Remaining risks / next action
 
 Before any new edit, fetch current `origin/main` because multiple writers may advance it. Launcher path-safety coverage is consolidated in primary CI; do not recreate the removed duplicate workflow.
 
-Next independently challenge a failure later than repository initialization—preferably provider execution or verification—then prove rerun recovery preserves unrelated caller state and does not carry stale generated state into the successful run. Keep prerequisite diagnostics useful and fail before mutation whenever the prerequisite can be checked up front.
+Next independently challenge verification-stage failure after the provider has generated output. Prove the failed attempt rolls back generated state, a subsequent canonical rerun reaches `READY`, unrelated caller state survives, and no stale output/evidence from the failed verification can satisfy the successful rerun. Keep prerequisite diagnostics useful and fail before mutation whenever the prerequisite can be checked up front.
 
 Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made. Live-provider behavior and broader OS/environment combinations remain outside the deterministic demo proof.
 
