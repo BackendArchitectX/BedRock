@@ -9,19 +9,19 @@ import (
 func TestSnapshotExcludesLikelySecretFiles(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"main.go":                                      "package main\n",
-		".env":                                         "API_KEY=secret\n",
-		".env.local":                                   "TOKEN=secret\n",
-		".envrc":                                       "export TOKEN=secret\n",
-		"credentials":                                  "aws_secret_access_key=secret\n",
-		"credentials.json":                             `{"token":"secret"}`,
-		"application_default_credentials.json":         `{"private_key":"secret"}`,
-		"service-account.json":                         `{"private_key":"secret"}`,
-		"deploy/secrets.yaml":                          "token: secret\n",
-		"tls/private.pem":                              "secret",
-		"tls/private.key":                              "secret",
-		".ssh/id_ed25519":                              "secret",
-		"config/application.yaml":                      "server: local\n",
+		"main.go":                              "package main\n",
+		".env":                                 "API_KEY=secret\n",
+		".env.local":                           "TOKEN=secret\n",
+		".envrc":                               "export TOKEN=secret\n",
+		"credentials":                          "aws_secret_access_key=secret\n",
+		"credentials.json":                     `{"token":"secret"}`,
+		"application_default_credentials.json": `{"private_key":"secret"}`,
+		"service-account.json":                 `{"private_key":"secret"}`,
+		"deploy/secrets.yaml":                  "token: secret\n",
+		"tls/private.pem":                      "secret",
+		"tls/private.key":                      "secret",
+		".ssh/id_ed25519":                      "secret",
+		"config/application.yaml":              "server: local\n",
 	}
 	for name, content := range files {
 		path := filepath.Join(root, filepath.FromSlash(name))
