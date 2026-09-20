@@ -87,10 +87,13 @@ Unknown response fields and trailing JSON/data are rejected. A response is limit
 ## Safety behavior currently implemented
 
 - Pre-existing Git dirty paths are protected from BedRock writes, including both source and destination paths represented by Git porcelain rename/copy records.
+- Git dirty state is refreshed after provider execution, so edits made while the provider is running are protected before BedRock applies its response.
+- On repair attempts, a previously BedRock-written path is treated as BedRock-owned only while its bytes still match BedRock's last write; an intervening external edit remains protected instead of being overwritten.
+- Rollback refuses to overwrite or recreate a BedRock-written path when that path was externally changed or removed after BedRock wrote it.
 - Absolute paths, repository traversal, `.git`, `.bedrock`, symlink targets/components, and non-regular replacement targets are rejected.
 - Proposed changes are bounded by file count, per-file bytes, and total bytes.
 - Verification is explicit; no verification commands means the run is reported `UNVERIFIED`, not `VERIFIED`.
-- Failed final verification rolls back files changed by the run.
+- Failed final verification rolls back files changed by the run when doing so will not overwrite a later external edit.
 - Run evidence is stored outside the repository under the operating-system user cache directory.
 - Provider stdout/stderr is size bounded; provider and verification commands have timeouts.
 - Credential-like ambient environment values are redacted from persisted verification output.
@@ -105,5 +108,6 @@ Repository content is context data, not trusted BedRock control instructions. A 
 - Deterministic fake-provider end-to-end CLI scenarios are covered in CI, but no live model-provider end-to-end scenario is claimed.
 - Windows and macOS behavior has not been independently verified.
 - Secret redaction is heuristic and should not be treated as a substitute for avoiding secrets in command output or repository context.
+- Concurrent-edit protection materially narrows overwrite races but does not provide filesystem transactions: another process can still change a target in the small interval between BedRock's final ownership check and the operating-system write.
 
-See `docs/ENGINEERING_LEDGER.md` for current verification evidence, known risks, and the next engineering target.
+See `docs/ENGINEERING_LEDGER.md` for verification history and `docs/LATEST_HANDOFF.md` for the current continuation point.
