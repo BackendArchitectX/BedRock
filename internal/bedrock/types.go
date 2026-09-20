@@ -8,11 +8,12 @@ type FileContext struct {
 }
 
 type ProviderRequest struct {
-	Task           string        `json:"task"`
-	Attempt        int           `json:"attempt"`
-	Failure        string        `json:"failure,omitempty"`
-	Files          []FileContext `json:"files"`
-	ProtectedPaths []string      `json:"protectedPaths,omitempty"`
+	Task                 string        `json:"task"`
+	Attempt              int           `json:"attempt"`
+	Failure              string        `json:"failure,omitempty"`
+	Files                []FileContext `json:"files"`
+	ProtectedPaths       []string      `json:"protectedPaths,omitempty"`
+	VerificationCommands []string      `json:"verificationCommands,omitempty"`
 }
 
 type FileChange struct {
