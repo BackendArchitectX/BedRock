@@ -55,6 +55,9 @@ func (p CommandProvider) Execute(ctx context.Context, req ProviderRequest) (Prov
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		if runCtx.Err() != nil {
+			if ctx.Err() != nil {
+				return ProviderResponse{}, fmt.Errorf("provider canceled: %w", ctx.Err())
+			}
 			return ProviderResponse{}, fmt.Errorf("provider timed out: %w", runCtx.Err())
 		}
 		return ProviderResponse{}, fmt.Errorf("provider failed: %w: %s", err, redactValues(stderr.String(), secretValues))

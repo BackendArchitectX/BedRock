@@ -1,8 +1,13 @@
 package bedrock
 
 import (
+	"context"
+	"errors"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestProviderEnvironmentOnlyPassesSafeAndExplicitVariables(t *testing.T) {
@@ -30,5 +35,33 @@ func TestRedactValuesRemovesExplicitProviderSecrets(t *testing.T) {
 	}
 	if !strings.Contains(got, "[REDACTED]") {
 		t.Fatalf("redaction marker missing: %q", got)
+	}
+}
+
+func TestCommandProviderDistinguishesCallerCancellation(t *testing.T) {
+	var bin string
+	var args []string
+	if runtime.GOOS == "windows" {
+		bin = os.Getenv("COMSPEC")
+		if bin == "" {
+			bin = "cmd.exe"
+		}
+		args = []string{"/S", "/C", "ping -n 30 127.0.0.1 >NUL"}
+	} else {
+		bin = "sh"
+		args = []string{"-c", "sleep 30"}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := (CommandProvider{Bin: bin, Args: args, Timeout: time.Minute}).Execute(ctx, ProviderRequest{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error=%v, want context.Canceled", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "provider canceled") {
+		t.Fatalf("error=%v, want cancellation diagnostic", err)
+	}
+	if strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("caller cancellation mislabeled as timeout: %v", err)
 	}
 }
