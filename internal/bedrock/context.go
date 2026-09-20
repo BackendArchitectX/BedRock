@@ -18,8 +18,8 @@ type candidateFile struct {
 }
 
 var ignoredDirs = map[string]struct{}{
-	".git": {}, ".bedrock": {}, ".ssh": {}, "node_modules": {}, "vendor": {},
-	"dist": {}, "build": {}, "target": {}, ".idea": {}, ".vscode": {},
+	".git": {}, ".bedrock": {}, ".ssh": {}, ".aws": {}, ".azure": {}, ".docker": {}, ".gnupg": {}, ".kube": {},
+	"node_modules": {}, "vendor": {}, "dist": {}, "build": {}, "target": {}, ".idea": {}, ".vscode": {},
 }
 
 func Snapshot(root, task string, maxFiles, maxBytes int) ([]FileContext, error) {
@@ -120,12 +120,12 @@ func sensitiveContextPath(name string) bool {
 		return true
 	}
 	switch name {
-	case ".netrc", ".npmrc", ".pypirc", "credentials", "credentials.json",
+	case ".netrc", ".npmrc", ".pypirc", ".git-credentials", "credentials", "credentials.json",
 		"application_default_credentials.json", "service-account.json", "secrets.json",
 		"secrets.yaml", "secrets.yml", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519":
 		return true
 	}
-	for _, suffix := range []string{".pem", ".key", ".p12", ".pfx", ".jks", ".keystore"} {
+	for _, suffix := range []string{".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".tfstate", ".tfstate.backup"} {
 		if strings.HasSuffix(name, suffix) {
 			return true
 		}
