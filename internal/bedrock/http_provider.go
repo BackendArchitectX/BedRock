@@ -124,6 +124,13 @@ func (p OpenAICompatibleProvider) Execute(ctx context.Context, req ProviderReque
 	if err := dec.Decode(&wireResponse); err != nil {
 		return ProviderResponse{}, fmt.Errorf("decode HTTP provider response: %w", err)
 	}
+	var wireExtra any
+	if err := dec.Decode(&wireExtra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return ProviderResponse{}, errors.New("HTTP provider response contained multiple JSON values")
+		}
+		return ProviderResponse{}, fmt.Errorf("HTTP provider response contained trailing data: %w", err)
+	}
 	if len(wireResponse.Choices) == 0 || strings.TrimSpace(wireResponse.Choices[0].Message.Content) == "" {
 		return ProviderResponse{}, errors.New("provider returned no assistant content")
 	}
