@@ -113,6 +113,47 @@ func TestSnapshotExcludesGitIgnoredFiles(t *testing.T) {
 	}
 }
 
+func TestSnapshotHonorsGitIgnoreFromNestedRepositoryRoot(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	repo := t.TempDir()
+	if err := exec.Command("git", "-C", repo, "init", "-q").Run(); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		".gitignore":             "*.private\n",
+		"service/main.go":        "package service\n",
+		"service/local.private":  "token=secret\n",
+		"service/config/example": "safe\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(repo, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	root := filepath.Join(repo, "service")
+	got, err := Snapshot(root, "inspect service", 100, 1024*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := make(map[string]bool, len(got))
+	for _, file := range got {
+		paths[file.Path] = true
+	}
+	if !paths["main.go"] || !paths["config/example"] {
+		t.Fatalf("expected nested non-ignored files in context, got %v", paths)
+	}
+	if paths["local.private"] {
+		t.Fatal("git-ignored file leaked when --repo points at a repository subdirectory")
+	}
+}
+
 func TestSensitiveContextPathDoesNotBlockOrdinarySource(t *testing.T) {
 	for _, name := range []string{"credentials.go", "key.go", "environment.go", "monkey.go", "secrets.go", "terraform.tf"} {
 		if sensitiveContextPath(name) {
