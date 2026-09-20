@@ -49,6 +49,7 @@ type Evidence struct {
 	Attempts             int                  `json:"attempts"`
 	ProviderSummaries    []string             `json:"providerSummaries,omitempty"`
 	ChangedPaths         []string             `json:"changedPaths,omitempty"`
+	DiffHash             string               `json:"diffHash,omitempty"`
 	BaselineVerification []VerificationResult `json:"baselineVerification,omitempty"`
 	Verification         []VerificationResult `json:"verification,omitempty"`
 	LastFailure          string               `json:"lastFailure,omitempty"`
