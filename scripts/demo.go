@@ -1,0 +1,121 @@
+//go:build ignore
+
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+)
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "BedRock demo: "+format+"\n", args...)
+	os.Exit(1)
+}
+
+func main() {
+	if err := run(); err != nil {
+		fail("%v", err)
+	}
+}
+
+func run() error {
+	if _, err := exec.LookPath("go"); err != nil {
+		return fmt.Errorf("Go 1.22+ is required and was not found on PATH")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		return fmt.Errorf("Git is required and was not found on PATH")
+	}
+
+	root, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("resolve checkout: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		return fmt.Errorf("run this command from the BedRock checkout root: %w", err)
+	}
+
+	work := os.Getenv("BEDROCK_DEMO_DIR")
+	if work == "" {
+		work = filepath.Join(os.TempDir(), "bedrock-demo")
+	}
+	work, err = filepath.Abs(work)
+	if err != nil {
+		return fmt.Errorf("resolve demo directory: %w", err)
+	}
+	marker := filepath.Join(work, ".bedrock-demo-owned")
+	if info, statErr := os.Stat(work); statErr == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("refusing to reuse %s because it is not a directory", work)
+		}
+		if _, markerErr := os.Stat(marker); markerErr != nil {
+			return fmt.Errorf("refusing to reuse %s because it is not marked as a BedRock demo directory; choose an empty BEDROCK_DEMO_DIR or remove it yourself", work)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return fmt.Errorf("inspect demo directory: %w", statErr)
+	}
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		return fmt.Errorf("create demo directory: %w", err)
+	}
+	if err := os.WriteFile(marker, []byte("BedRock demo workspace\n"), 0o600); err != nil {
+		return fmt.Errorf("mark demo directory: %w", err)
+	}
+
+	binDir := filepath.Join(work, "bin")
+	repo := filepath.Join(work, "repository")
+	for _, path := range []string{binDir, repo} {
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("clean %s: %w", path, err)
+		}
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			return fmt.Errorf("create %s: %w", path, err)
+		}
+	}
+	if err := command(root, "git", "-C", repo, "init", "-q"); err != nil {
+		return err
+	}
+
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	bedrock := filepath.Join(binDir, "bedrock"+ext)
+	provider := filepath.Join(binDir, "fake-provider"+ext)
+	fmt.Println("BedRock demo: building CLI and deterministic provider...")
+	if err := command(root, "go", "build", "-o", bedrock, "./cmd/bedrock"); err != nil {
+		return err
+	}
+	if err := command(root, "go", "build", "-o", provider, "./cmd/bedrock/testdata/fakeprovider"); err != nil {
+		return err
+	}
+
+	fmt.Println("BedRock demo: starting verified orchestration run...")
+	verify := "test \"$(cat result.txt)\" = good"
+	if runtime.GOOS == "windows" {
+		verify = "for /f %i in (result.txt) do @if \"%i\"==\"good\" (exit /b 0) else (exit /b 1)"
+	}
+	if err := command(root, bedrock, "run", "--repo", repo, "--task", "write deterministic result", "--provider-bin", provider, "--verify", verify); err != nil {
+		return err
+	}
+	result, err := os.ReadFile(filepath.Join(repo, "result.txt"))
+	if err != nil || string(result) != "good" {
+		return fmt.Errorf("verification output did not match the expected result")
+	}
+	fmt.Println("BedRock demo: READY")
+	fmt.Printf("Workspace: %s\nResult: %s\n", repo, filepath.Join(repo, "result.txt"))
+	return nil
+}
+
+func command(dir, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s failed: %w", name, err)
+	}
+	return nil
+}
