@@ -7,7 +7,10 @@ import (
 )
 
 func TestSensitiveEnvironmentKey(t *testing.T) {
-	for _, key := range []string{"OPENAI_API_KEY", "GITHUB_TOKEN", "DB_PASSWORD", "CLIENT_SECRET", "AWS_SECRET_ACCESS_KEY"} {
+	for _, key := range []string{
+		"OPENAI_API_KEY", "GITHUB_TOKEN", "DB_PASSWORD", "DB_PASS", "CLIENT_SECRET",
+		"AWS_SECRET_ACCESS_KEY", "DATABASE_URL", "DATABASE_URI", "REDIS_CONNECTION_STRING",
+	} {
 		if !sensitiveEnvironmentKey(key) {
 			t.Fatalf("expected %q to be sensitive", key)
 		}
