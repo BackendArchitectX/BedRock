@@ -12,8 +12,8 @@ import (
 
 const (
 	maxChangesPerResponse = 32
-	maxChangeBytes        = 1024 * 1024
-	maxTotalChangeBytes   = 4 * 1024 * 1024
+	maxChangeBytes         = 1024 * 1024
+	maxTotalChangeBytes    = 4 * 1024 * 1024
 )
 
 type originalFile struct {
@@ -49,15 +49,39 @@ func DirtyPaths(root string) (map[string]struct{}, error) {
 		return dirty, nil
 	}
 
-	// ChangeSet paths are relative to the directory BedRock was invoked on, not
-	// necessarily the enclosing Git worktree root. Ask Git for paths relative to
-	// that directory so dirty-path protection compares names in the same space.
-	cmd := exec.Command("git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--relative", "--", ".")
+	prefixCmd := exec.Command("git", "-C", root, "rev-parse", "--show-prefix")
+	prefixOut, err := prefixCmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("inspect git worktree prefix: %w", err)
+	}
+	prefix := filepath.ToSlash(strings.TrimSuffix(string(prefixOut), "\n"))
+	prefix = strings.TrimSuffix(prefix, "\r")
+
+	// Porcelain v1 reports paths relative to the worktree root even when Git is
+	// invoked from a nested directory. Restrict status to the requested subtree,
+	// then translate those paths into ChangeSet's root-relative coordinate space.
+	cmd := exec.Command("git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git status: %w", err)
 	}
-	return parsePorcelainV1Z(out)
+	parsed, err := parsePorcelainV1Z(out)
+	if err != nil {
+		return nil, err
+	}
+	if prefix == "" {
+		return parsed, nil
+	}
+	for path := range parsed {
+		if !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		rel := strings.TrimPrefix(path, prefix)
+		if rel != "" {
+			dirty[rel] = struct{}{}
+		}
+	}
+	return dirty, nil
 }
 
 func parsePorcelainV1Z(out []byte) (map[string]struct{}, error) {
