@@ -39,6 +39,12 @@ func (v fileContentVerifier) Verify(_ context.Context, root string) ([]Verificat
 	return []VerificationResult{{Command: "content-check", ExitCode: 0, Output: "ok"}}, nil
 }
 
+type inconsistentVerifier struct{}
+
+func (inconsistentVerifier) Verify(_ context.Context, _ string) ([]VerificationResult, error) {
+	return []VerificationResult{{Command: "broken-contract", ExitCode: 1, Output: "failed"}}, nil
+}
+
 func TestEngineRepairsAfterFailedVerification(t *testing.T) {
 	root := t.TempDir()
 	provider := &scriptedProvider{responses: []ProviderResponse{
@@ -90,6 +96,40 @@ func TestEngineRollsBackWhenVerificationNeverPasses(t *testing.T) {
 	}
 	if !result.Evidence.RolledBack {
 		t.Fatal("expected rollback evidence")
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != "original" {
+		t.Fatalf("rollback content=%q", data)
+	}
+}
+
+func TestEngineRejectsNonzeroVerificationResultWithoutError(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "result.txt")
+	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	provider := &scriptedProvider{responses: []ProviderResponse{
+		{Changes: []FileChange{{Path: "result.txt", Content: "provider-change"}}},
+	}}
+	engine := Engine{
+		Provider:    provider,
+		Verifier:    inconsistentVerifier{},
+		MaxAttempts: 1,
+	}
+
+	result, err := engine.Run(context.Background(), root, "change result")
+	if err == nil {
+		t.Fatal("expected inconsistent verifier result to fail the run")
+	}
+	if result.Evidence.Status == "VERIFIED" {
+		t.Fatal("nonzero verification result was incorrectly marked VERIFIED")
+	}
+	if !result.Evidence.RolledBack {
+		t.Fatal("expected provider change to be rolled back")
 	}
 	data, readErr := os.ReadFile(path)
 	if readErr != nil {
