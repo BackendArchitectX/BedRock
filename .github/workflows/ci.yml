@@ -55,6 +55,20 @@ jobs:
           test "$foreign_exit" -ne 0
           test "$(cat "$foreign/user.txt")" = 'preserve me'
           grep -q 'refusing to reuse' "$RUNNER_TEMP/foreign.log"
+
+          # Even a forged ownership marker must not allow the launcher to treat the
+          # checkout itself as disposable demo state.
+          printf 'BedRock demo workspace\n' > .bedrock-demo-owned
+          trap 'rm -f .bedrock-demo-owned' EXIT
+          set +e
+          BEDROCK_DEMO_DIR="$GITHUB_WORKSPACE" go run ./scripts/demo.go > "$RUNNER_TEMP/checkout-workspace.log" 2>&1
+          checkout_exit=$?
+          set -e
+          test "$checkout_exit" -ne 0
+          test -f go.mod
+          grep -q 'contains the BedRock checkout' "$RUNNER_TEMP/checkout-workspace.log"
+          rm -f .bedrock-demo-owned
+          trap - EXIT
       - name: CLI failure rollback smoke
         shell: bash
         run: |
@@ -121,3 +135,19 @@ jobs:
           if ($process.ExitCode -eq 0) { throw 'launcher unexpectedly accepted foreign workspace' }
           if ((Get-Content (Join-Path $foreign 'user.txt') -Raw) -ne 'preserve me') { throw 'foreign sentinel was modified' }
           if (-not ($foreignLog -match 'refusing to reuse')) { throw "missing foreign-workspace refusal diagnostic`n$($foreignLog -join "`n")" }
+
+          # A forged marker in the checkout must not make the checkout disposable.
+          $marker = Join-Path $env:GITHUB_WORKSPACE '.bedrock-demo-owned'
+          Set-Content -Path $marker -Value 'BedRock demo workspace' -NoNewline:$false
+          try {
+            $env:BEDROCK_DEMO_DIR = $env:GITHUB_WORKSPACE
+            $checkoutOut = Join-Path $env:RUNNER_TEMP 'checkout-workspace.stdout.log'
+            $checkoutErr = Join-Path $env:RUNNER_TEMP 'checkout-workspace.stderr.log'
+            $checkoutProcess = Start-Process -FilePath 'go' -ArgumentList @('run', './scripts/demo.go') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $checkoutOut -RedirectStandardError $checkoutErr
+            $checkoutLog = @((Get-Content $checkoutOut -ErrorAction SilentlyContinue), (Get-Content $checkoutErr -ErrorAction SilentlyContinue))
+            if ($checkoutProcess.ExitCode -eq 0) { throw 'launcher unexpectedly accepted checkout as demo workspace' }
+            if (-not (Test-Path (Join-Path $env:GITHUB_WORKSPACE 'go.mod'))) { throw 'checkout was modified destructively' }
+            if (-not ($checkoutLog -match 'contains the BedRock checkout')) { throw "missing checkout refusal diagnostic`n$($checkoutLog -join "`n")" }
+          } finally {
+            Remove-Item $marker -ErrorAction SilentlyContinue
+          }
