@@ -42,17 +42,19 @@ type Verifier interface {
 }
 
 type Evidence struct {
-	RunID         string               `json:"runId"`
-	Task          string               `json:"task"`
-	Provider      string               `json:"provider"`
-	Status        string               `json:"status"`
-	Attempts      int                  `json:"attempts"`
-	ChangedPaths  []string             `json:"changedPaths,omitempty"`
-	Verification  []VerificationResult `json:"verification,omitempty"`
-	LastFailure   string               `json:"lastFailure,omitempty"`
-	RolledBack    bool                 `json:"rolledBack"`
-	Repository    string               `json:"repository"`
-	RecordedAtUTC string               `json:"recordedAtUtc"`
+	RunID                string               `json:"runId"`
+	Task                 string               `json:"task"`
+	Provider             string               `json:"provider"`
+	Status               string               `json:"status"`
+	Attempts             int                  `json:"attempts"`
+	ProviderSummaries    []string             `json:"providerSummaries,omitempty"`
+	ChangedPaths         []string             `json:"changedPaths,omitempty"`
+	BaselineVerification []VerificationResult `json:"baselineVerification,omitempty"`
+	Verification         []VerificationResult `json:"verification,omitempty"`
+	LastFailure          string               `json:"lastFailure,omitempty"`
+	RolledBack           bool                 `json:"rolledBack"`
+	Repository           string               `json:"repository"`
+	RecordedAtUTC        string               `json:"recordedAtUtc"`
 }
 
 type RunResult struct {
