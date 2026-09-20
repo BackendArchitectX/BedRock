@@ -4,15 +4,21 @@ BedRock is an early Go 1.22 prototype for local-first, owner-controlled AI softw
 
 BedRock is **not** production-ready. Provider-specific integrations, sandboxing beyond the current file/Git safeguards, broad cross-platform validation, and a polished adapter ecosystem are not implemented yet.
 
-## Requirements
+## One-step start
 
-- Go 1.22+
-- Git, when running against a Git repository
-- A provider adapter executable that implements the JSON stdin/stdout contract described below
+A fresh supported checkout has one canonical demo/start path:
 
-No external Go dependencies are currently required.
+```sh
+./scripts/demo.sh
+```
 
-## Build and test
+Requirements are Go 1.22+ and Git on `PATH`. The launcher validates them, creates a fresh disposable workspace, builds BedRock and the deterministic provider, runs the complete orchestration path, waits for actual verification, and prints `READY` plus the workspace/result paths only after the result is proven. It needs no credentials or external services. Re-running it safely recreates only its dedicated demo directory (`$BEDROCK_DEMO_DIR`, or `${TMPDIR:-/tmp}/bedrock-demo`).
+
+This is the complete usable **deterministic prototype demo**, not a claim of live-model readiness. There is currently no backend server or web UI, so there are no application URLs to print. A real model still requires an external provider adapter as described below.
+
+## Development and advanced/manual use
+
+These commands are optional development/troubleshooting paths, not the normal demo startup sequence:
 
 ```sh
 go build ./cmd/bedrock
@@ -21,9 +27,7 @@ go test -race ./...
 go vet ./...
 ```
 
-CI requires the repository to be `gofmt` clean and also builds the real CLI plus a deterministic fake provider. It exercises both a successful verified edit and a failed-verification rollback that preserves pre-existing user work.
-
-## Run
+To run against a real repository/provider adapter after building `bedrock`:
 
 ```sh
 ./bedrock run \
@@ -32,8 +36,6 @@ CI requires the repository to be `gofmt` clean and also builds the real CLI plus
   --provider-bin /path/to/provider-adapter \
   --verify "go test ./..."
 ```
-
-On Windows, invoke the built `bedrock.exe` and use a verification command valid for `cmd.exe`.
 
 Useful options:
 
@@ -61,14 +63,9 @@ Explicitly passed environment values are redacted from provider failure stderr. 
 
 ## Provider adapter contract
 
-BedRock is provider-neutral at the core. `--provider-bin` is an executable that:
+BedRock is provider-neutral at the core. `--provider-bin` is an executable that reads one JSON request from stdin, performs provider/model interaction itself, writes exactly one JSON response to stdout, and writes diagnostics to stderr with a non-zero exit on failure.
 
-1. reads one JSON request from stdin;
-2. performs provider/model interaction itself;
-3. writes exactly one JSON response to stdout;
-4. writes diagnostics to stderr and exits non-zero on failure.
-
-The request includes the engineering task, attempt number, previous verification failure (when retrying), bounded repository files, and paths that were already dirty before the run. The response shape is:
+The response shape is:
 
 ```json
 {
@@ -82,32 +79,30 @@ The request includes the engineering task, attempt number, previous verification
 }
 ```
 
-Unknown response fields and trailing JSON/data are rejected. A response is limited to bounded file counts and sizes before writes are applied.
+Unknown response fields and trailing JSON/data are rejected. Proposed changes are bounded before writes are applied.
 
 ## Safety behavior currently implemented
 
-- Pre-existing Git dirty paths are protected from BedRock writes, including both source and destination paths represented by Git porcelain rename/copy records.
-- Git dirty state is refreshed after provider execution, so edits made while the provider is running are protected before BedRock applies its response.
-- On repair attempts, a previously BedRock-written path is treated as BedRock-owned only while its bytes still match BedRock's last write; an intervening external edit remains protected instead of being overwritten.
-- Rollback refuses to overwrite or recreate a BedRock-written path when that path was externally changed or removed after BedRock wrote it.
-- Absolute paths, repository traversal, `.git`, `.bedrock`, symlink targets/components, and non-regular replacement targets are rejected.
+- Pre-existing Git dirty paths are protected, including source and destination paths represented by rename/copy records.
+- Git dirty state is refreshed after provider execution, protecting edits made while the provider runs.
+- Repair attempts retain ownership only while previously written bytes still match; intervening external edits are not overwritten.
+- Rollback refuses to overwrite or recreate a BedRock-written path after an external change or removal.
+- Absolute paths, traversal, `.git`, `.bedrock`, symlink targets/components, and non-regular replacement targets are rejected.
 - Proposed changes are bounded by file count, per-file bytes, and total bytes.
-- Verification is explicit; no verification commands means the run is reported `UNVERIFIED`, not `VERIFIED`.
-- Failed final verification rolls back files changed by the run when doing so will not overwrite a later external edit.
+- No verification commands means `UNVERIFIED`, never `VERIFIED`.
 - Run evidence is stored outside the repository under the operating-system user cache directory.
-- Provider stdout/stderr is size bounded; provider and verification commands have timeouts.
-- Credential-like ambient environment values are redacted from persisted verification output.
+- Provider output and execution time are bounded; credential-like values are redacted from persisted verification output.
 
-Repository content is context data, not trusted BedRock control instructions. A provider may still produce unsafe changes, so verification commands and code review remain important trust boundaries.
+Repository content is context data, not trusted BedRock control instructions. Provider-produced changes remain untrusted until verification/review.
 
 ## Current limitations
 
-- There is no built-in OpenAI, Anthropic, or local-model adapter yet; an external adapter executable is required.
+- There is no built-in OpenAI, Anthropic, or local-model adapter; an external adapter executable is required for live-model use.
 - Provider execution is a local subprocess, not a hardened OS/container sandbox.
-- Verification commands are intentionally user-supplied shell commands and therefore execute with the user's local permissions.
+- Verification commands are user-supplied shell commands and execute with the user's local permissions.
+- The canonical one-step launcher is a POSIX-shell path and is intended for Linux/macOS-like environments; Windows has not been independently verified.
 - Deterministic fake-provider end-to-end CLI scenarios are covered in CI, but no live model-provider end-to-end scenario is claimed.
-- Windows and macOS behavior has not been independently verified.
-- Secret redaction is heuristic and should not be treated as a substitute for avoiding secrets in command output or repository context.
-- Concurrent-edit protection materially narrows overwrite races but does not provide filesystem transactions: another process can still change a target in the small interval between BedRock's final ownership check and the operating-system write.
+- Secret redaction is heuristic.
+- Concurrent-edit protection narrows overwrite races but does not provide filesystem transactions.
 
 See `docs/ENGINEERING_LEDGER.md` for verification history and `docs/LATEST_HANDOFF.md` for the current continuation point.
