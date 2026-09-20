@@ -30,3 +30,23 @@ func TestValidateOwnWritesRejectsTrackedFileRestoredToOriginal(t *testing.T) {
 		t.Fatalf("external state changed: %q err=%v", data, readErr)
 	}
 }
+
+func TestValidateOwnWritesRejectsDeletedNewFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "new.txt")
+	set := NewChangeSet()
+	if err := set.Apply(root, []FileChange{{Path: "new.txt", Content: "bedrock edit"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	err := set.ValidateOwnWrites(root)
+	if err == nil || !strings.Contains(err.Error(), "removed after BedRock wrote it") {
+		t.Fatalf("expected ownership conflict, got %v", err)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("external deletion was not preserved: %v", statErr)
+	}
+}
