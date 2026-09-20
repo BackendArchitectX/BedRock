@@ -81,3 +81,39 @@ jobs:
           test ! -e "$repo/result.txt"
           test "$(cat "$repo/user-work.txt")" = 'keep me'
           grep -q '^status: FAILED$' "$RUNNER_TEMP/bedrock-failure.log"
+
+  windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: false
+      - name: Canonical one-step start on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $demo = Join-Path $env:RUNNER_TEMP 'bedrock-demo-windows'
+          $env:BEDROCK_DEMO_DIR = $demo
+          $log = @(go run ./scripts/demo.go 2>&1)
+          if ($LASTEXITCODE -ne 0) { throw "canonical launcher failed with exit code $LASTEXITCODE`n$($log -join "`n")" }
+          $log | ForEach-Object { Write-Host $_ }
+          if ((Get-Content (Join-Path $demo 'repository/result.txt') -Raw).Trim() -ne 'good') { throw 'verified result mismatch' }
+          if (-not ($log -match '^status: VERIFIED$')) { throw 'missing VERIFIED status' }
+          if (-not ($log -match '^BedRock demo: READY$')) { throw 'missing READY status' }
+
+          # Re-run the same canonical command to prove idempotent owned-workspace cleanup on Windows.
+          $rerun = @(go run ./scripts/demo.go 2>&1)
+          if ($LASTEXITCODE -ne 0) { throw "canonical launcher rerun failed with exit code $LASTEXITCODE`n$($rerun -join "`n")" }
+          if (-not ($rerun -match '^BedRock demo: READY$')) { throw 'rerun missing READY status' }
+
+          # The ownership guard must preserve a foreign Windows workspace too.
+          $foreign = Join-Path $env:RUNNER_TEMP 'foreign-workspace-windows'
+          New-Item -ItemType Directory -Path $foreign | Out-Null
+          Set-Content -Path (Join-Path $foreign 'user.txt') -Value 'preserve me' -NoNewline
+          $env:BEDROCK_DEMO_DIR = $foreign
+          $foreignLog = @(go run ./scripts/demo.go 2>&1)
+          if ($LASTEXITCODE -eq 0) { throw 'launcher unexpectedly accepted foreign workspace' }
+          if ((Get-Content (Join-Path $foreign 'user.txt') -Raw) -ne 'preserve me') { throw 'foreign sentinel was modified' }
+          if (-not ($foreignLog -match 'refusing to reuse')) { throw 'missing foreign-workspace refusal diagnostic' }
