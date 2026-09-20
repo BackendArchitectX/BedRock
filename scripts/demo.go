@@ -40,6 +40,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("resolve checkout: %w", err)
 	}
+	root, err = filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("resolve checkout: %w", err)
+	}
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		return fmt.Errorf("run this command from the BedRock checkout root: %w", err)
 	}
@@ -51,6 +55,12 @@ func run() error {
 	work, err = filepath.Abs(work)
 	if err != nil {
 		return fmt.Errorf("resolve demo directory: %w", err)
+	}
+	if filepath.Dir(work) == work {
+		return fmt.Errorf("refusing to use filesystem root %s as BEDROCK_DEMO_DIR", work)
+	}
+	if containsPath(work, root) {
+		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it contains the BedRock checkout %s", work, root)
 	}
 	marker := filepath.Join(work, ".bedrock-demo-owned")
 	newWorkspace := false
@@ -140,6 +150,14 @@ func run() error {
 	fmt.Println("BedRock demo: READY")
 	fmt.Printf("Workspace: %s\nResult: %s\n", repo, filepath.Join(repo, "result.txt"))
 	return nil
+}
+
+func containsPath(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
 func requireSupportedGo() error {
