@@ -37,3 +37,19 @@ jobs:
           test "$exit_code" -ne 0
           test "$(cat "$target/demo/user.txt")" = 'preserve me'
           grep -q 'path component .* is a symlink' "$RUNNER_TEMP/ancestor-symlink.log"
+
+      - name: Reject workspace inside checkout without mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$GITHUB_WORKSPACE/.bedrock-demo-test"
+          trap 'rm -rf "$work"' EXIT
+
+          set +e
+          BEDROCK_DEMO_DIR="$work" go run ./scripts/demo.go > "$RUNNER_TEMP/checkout-workspace.log" 2>&1
+          exit_code=$?
+          set -e
+
+          test "$exit_code" -ne 0
+          test ! -e "$work"
+          grep -q 'is inside the BedRock checkout' "$RUNNER_TEMP/checkout-workspace.log"
