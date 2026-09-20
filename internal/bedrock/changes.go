@@ -49,7 +49,10 @@ func DirtyPaths(root string) (map[string]struct{}, error) {
 		return dirty, nil
 	}
 
-	cmd := exec.Command("git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	// ChangeSet paths are relative to the directory BedRock was invoked on, not
+	// necessarily the enclosing Git worktree root. Ask Git for paths relative to
+	// that directory so dirty-path protection compares names in the same space.
+	cmd := exec.Command("git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--relative", "--", ".")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git status: %w", err)
