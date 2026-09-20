@@ -10,32 +10,29 @@ The only canonical one-step demo/start path is:
 go run ./scripts/demo.go
 ```
 
-It validates Go 1.22+ and Git, protects caller-selected workspaces with an ownership marker and dangerous-root/checkout containment checks, builds the real CLI plus deterministic provider, initializes an isolated Git repository, runs verified orchestration, validates the produced result, and prints `READY` only after success. It is intentionally a deterministic prototype path: BedRock currently has no backend server or web UI and no built-in live-model provider, so no application URL or live-provider readiness is claimed.
+It validates Go 1.22+ and Git before workspace mutation, protects caller-selected workspaces with an exact ownership marker plus dangerous-root/checkout containment checks, builds the real CLI and deterministic provider, initializes an isolated Git repository, runs verified orchestration, validates the produced result, and prints `READY` only after success. It is intentionally a deterministic prototype path: BedRock currently has no backend server or web UI and no built-in live-model provider, so no application URL or live-provider readiness is claimed.
 
-## 2026-09-20 release integration
+## 2026-09-20 independent verification
 
 ### Verified baseline
 
 - Reconciled against current rewritten `origin/main`; superseded pre-rewrite hashes remain superseded.
-- GitHub Actions run `35501930929` for `29a79cb7a57e8ac3dd42f0cc7222824960a92043` completed successfully.
-- Linux CI passed format, vet, unit tests, `go test -race ./...`, canonical one-step start, rerun/idempotency and failure/rollback smoke.
-- Windows CI passed the exact canonical one-step launcher, result/readiness assertions, rerun behavior and foreign-workspace protection.
-- Windows race detection is not executed because the user independently reproduced a ThreadSanitizer startup/address-space failure outside BedRock; Linux CI remains the authoritative race gate.
+- GitHub Actions run `35503624556` for `e9b161ccb9545d015b557a09e45b19ca7931b27f` completed successfully.
+- Linux CI actually executed and passed prerequisite-failure safety, format, vet, unit tests, `go test -race ./...`, canonical one-step start, and CLI failure/rollback smoke.
+- Windows CI actually executed and passed the canonical one-step launcher acceptance step.
+- The current independent regression rejects a symlink `.bedrock-demo-owned` marker and verifies that its external target and workspace are not mutated.
+- Windows race detection is not executed because ThreadSanitizer could not initialize in the independently isolated local Windows environment; Linux CI remains the authoritative race gate.
+- Current commit author/committer map to the `BackendArchitectX` GitHub account; no superseded prohibited author history is treated as active.
 
-### Integration delta
+### One-step acceptance status
 
-- Removed obsolete `scripts/demo.sh`. It duplicated the canonical Go launcher, was no longer referenced by README/CI, was POSIX-only, and had weaker workspace-marker validation than `scripts/demo.go`. Keeping it created an unnecessary second launcher implementation and a future security/documentation drift risk.
-- The canonical Go launcher remains the sole normal startup implementation and command.
-
-### Verification status
-
-- Pre-change baseline `29a79cb7`: GitHub Actions run `35501930929` PASS on both Linux and Windows jobs.
-- Removal commit `54aeb525d8babe567cec0e8642a158d98eef7221`: CI pending at handoff; do not infer PASS from the predecessor.
-- This ledger-refresh commit also requires current-HEAD CI before release claims are advanced.
+The deterministic prototype has one documented normal launcher, `go run ./scripts/demo.go`. The launcher checks required tools/version before creating or cleaning its workspace, requires an exact regular-file ownership marker for reuse, refuses filesystem-root and checkout-containing workspace paths, rebuilds the CLI/provider, recreates only owned demo children, initializes the demo repository, waits for the real BedRock run and verification to finish, checks `result.txt`, and only then prints `READY`. README and CI use the same command. Rerun/idempotency, foreign-workspace refusal, prerequisite-failure non-mutation, invalid/symlink marker rejection, Linux success/failure orchestration, and Windows launcher execution are covered by current CI.
 
 ### Remaining risks / next action
 
-First inspect CI for the current HEAD and repair any real regression before further work. If green, the deterministic prototype satisfies the documented one-step launcher gate on Linux and Windows CI with one launcher implementation. Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made. Live-provider behavior and broader OS/environment combinations remain outside the deterministic demo proof. Prefer security review, dependency health, clean-checkout validation and factual release documentation over new feature growth.
+Before any new edit, fetch current `origin/main` because multiple writers may advance it. A worthwhile next independent safety check is physical-path handling for a caller-supplied `BEDROCK_DEMO_DIR` whose workspace path itself is a symlink: current containment checks are lexical, while marker access and child cleanup traverse path components. Determine the intended policy, add a regression first, and either reject a symlink workspace root or canonicalize it before containment/cleanup. Also continue checking failed dependency/tool diagnostics and clean-checkout behavior rather than adding product runtime concepts merely to mirror external scheduling.
+
+Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made. Live-provider behavior and broader OS/environment combinations remain outside the deterministic demo proof.
 
 ## Historical notes
 
