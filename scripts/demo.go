@@ -59,10 +59,8 @@ func run() error {
 	if filepath.Dir(work) == work {
 		return fmt.Errorf("refusing to use filesystem root %s as BEDROCK_DEMO_DIR", work)
 	}
-	if info, lstatErr := os.Lstat(work); lstatErr == nil && info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to use symlink %s as BEDROCK_DEMO_DIR", work)
-	} else if lstatErr != nil && !os.IsNotExist(lstatErr) {
-		return fmt.Errorf("inspect demo directory path: %w", lstatErr)
+	if err := rejectSymlinkComponents(work); err != nil {
+		return err
 	}
 	if containsPath(work, root) {
 		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it contains the BedRock checkout %s", work, root)
@@ -155,6 +153,25 @@ func run() error {
 	fmt.Println("BedRock demo: READY")
 	fmt.Printf("Workspace: %s\nResult: %s\n", repo, filepath.Join(repo, "result.txt"))
 	return nil
+}
+
+func rejectSymlinkComponents(path string) error {
+	current := path
+	for {
+		info, err := os.Lstat(current)
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because path component %s is a symlink", path, current)
+			}
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect demo directory path component %s: %w", current, err)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return nil
+		}
+		current = parent
+	}
 }
 
 func containsPath(parent, child string) bool {
