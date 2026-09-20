@@ -48,6 +48,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  bedrock run --repo . --task \"...\" --provider-bin <adapter> [--provider-arg <arg>] [--provider-env <NAME>] [--verify <command>]")
+	fmt.Fprintln(os.Stderr, "  bedrock run --repo . --task \"...\" --provider-endpoint <url> --provider-model <model> [--provider-api-key-env <NAME>] [--verify <command>]")
 }
 
 func run(ctx context.Context, args []string) error {
@@ -55,6 +56,9 @@ func run(ctx context.Context, args []string) error {
 	repo := fs.String("repo", ".", "repository root")
 	task := fs.String("task", "", "engineering task")
 	providerBin := fs.String("provider-bin", "", "provider adapter executable")
+	providerEndpoint := fs.String("provider-endpoint", "", "OpenAI-compatible chat-completions endpoint")
+	providerModel := fs.String("provider-model", "", "model name for --provider-endpoint")
+	providerAPIKeyEnv := fs.String("provider-api-key-env", "", "environment variable containing the HTTP provider API key")
 	maxAttempts := fs.Int("max-attempts", 2, "maximum implementation/repair attempts")
 	contextFiles := fs.Int("context-files", 80, "maximum context files")
 	contextBytes := fs.Int("context-bytes", 200*1024, "maximum context bytes")
@@ -72,17 +76,14 @@ func run(ctx context.Context, args []string) error {
 	if strings.TrimSpace(*task) == "" {
 		return fmt.Errorf("--task is required")
 	}
-	if strings.TrimSpace(*providerBin) == "" {
-		return fmt.Errorf("--provider-bin is required")
+
+	provider, err := configuredProvider(*providerBin, providerArgs, providerEnv, *providerEndpoint, *providerModel, *providerAPIKeyEnv, *providerTimeout)
+	if err != nil {
+		return err
 	}
 
 	engine := bedrock.Engine{
-		Provider: bedrock.CommandProvider{
-			Bin:      *providerBin,
-			Args:     providerArgs,
-			Timeout:  *providerTimeout,
-			EnvAllow: providerEnv,
-		},
+		Provider: provider,
 		Verifier: bedrock.ShellVerifier{
 			Commands: verifyCommands,
 			Timeout:  *verifyTimeout,
@@ -103,4 +104,35 @@ func run(ctx context.Context, args []string) error {
 		fmt.Printf("evidence: %s\n", result.EvidencePath)
 	}
 	return err
+}
+
+func configuredProvider(bin string, args, env []string, endpoint, model, apiKeyEnv string, timeout time.Duration) (bedrock.Provider, error) {
+	bin = strings.TrimSpace(bin)
+	endpoint = strings.TrimSpace(endpoint)
+	model = strings.TrimSpace(model)
+	apiKeyEnv = strings.TrimSpace(apiKeyEnv)
+	if bin != "" && endpoint != "" {
+		return nil, fmt.Errorf("--provider-bin and --provider-endpoint are mutually exclusive")
+	}
+	if endpoint != "" {
+		if model == "" {
+			return nil, fmt.Errorf("--provider-model is required with --provider-endpoint")
+		}
+		var apiKey string
+		if apiKeyEnv != "" {
+			var ok bool
+			apiKey, ok = os.LookupEnv(apiKeyEnv)
+			if !ok || apiKey == "" {
+				return nil, fmt.Errorf("provider API key environment variable %q is not set", apiKeyEnv)
+			}
+		}
+		return bedrock.OpenAICompatibleProvider{Endpoint: endpoint, Model: model, APIKey: apiKey, Timeout: timeout}, nil
+	}
+	if model != "" || apiKeyEnv != "" {
+		return nil, fmt.Errorf("--provider-model and --provider-api-key-env require --provider-endpoint")
+	}
+	if bin == "" {
+		return nil, fmt.Errorf("one of --provider-bin or --provider-endpoint is required")
+	}
+	return bedrock.CommandProvider{Bin: bin, Args: args, Timeout: timeout, EnvAllow: env}, nil
 }
