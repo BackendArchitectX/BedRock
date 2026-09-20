@@ -81,14 +81,22 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 		return RunResult{Evidence: evidence, EvidencePath: path}, runErr
 	}
 
+	rollback := func(cause error) error {
+		rollbackErr := changes.Rollback(root)
+		if rollbackErr != nil {
+			evidence.RolledBack = false
+			return fmt.Errorf("%w; rollback failed: %v", cause, rollbackErr)
+		}
+		evidence.RolledBack = true
+		return cause
+	}
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		evidence.Attempts = attempt
 		files, err := Snapshot(root, task, e.ContextMaxFiles, e.ContextMaxBytes)
 		if err != nil {
 			failure = err.Error()
-			_ = changes.Rollback(root)
-			evidence.RolledBack = true
-			return finish(err)
+			return finish(rollback(err))
 		}
 
 		response, err := e.Provider.Execute(ctx, ProviderRequest{
@@ -100,18 +108,11 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 		})
 		if err != nil {
 			failure = err.Error()
-			_ = changes.Rollback(root)
-			evidence.RolledBack = true
-			return finish(err)
+			return finish(rollback(err))
 		}
 		if err := changes.Apply(root, response.Changes, protected); err != nil {
 			failure = err.Error()
-			rollbackErr := changes.Rollback(root)
-			evidence.RolledBack = true
-			if rollbackErr != nil {
-				return finish(fmt.Errorf("%w; rollback failed: %v", err, rollbackErr))
-			}
-			return finish(err)
+			return finish(rollback(err))
 		}
 
 		if e.Verifier == nil {
@@ -134,12 +135,7 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 
 		failure = verificationFailure(verifyErr, results)
 		if attempt == maxAttempts {
-			rollbackErr := changes.Rollback(root)
-			evidence.RolledBack = true
-			if rollbackErr != nil {
-				return finish(fmt.Errorf("%w; rollback failed: %v", verifyErr, rollbackErr))
-			}
-			return finish(verifyErr)
+			return finish(rollback(verifyErr))
 		}
 	}
 	return finish(errors.New("attempt loop ended unexpectedly"))
