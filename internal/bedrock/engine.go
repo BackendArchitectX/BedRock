@@ -57,12 +57,18 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 	sort.Strings(protectedPaths)
 
 	var verificationCommands []string
+	appendVerificationCommands := func(commands []string) {
+		secretValues := sensitiveEnvironmentValues()
+		for _, command := range commands {
+			verificationCommands = append(verificationCommands, redactValues(command, secretValues))
+		}
+	}
 	switch verifier := e.Verifier.(type) {
 	case ShellVerifier:
-		verificationCommands = append([]string(nil), verifier.Commands...)
+		appendVerificationCommands(verifier.Commands)
 	case *ShellVerifier:
 		if verifier != nil {
-			verificationCommands = append([]string(nil), verifier.Commands...)
+			appendVerificationCommands(verifier.Commands)
 		}
 	}
 
