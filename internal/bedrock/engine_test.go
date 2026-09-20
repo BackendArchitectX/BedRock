@@ -155,6 +155,9 @@ func TestEngineReportsRollbackConflictWithoutOverwritingConcurrentEdit(t *testin
 	if result.Evidence.RolledBack {
 		t.Fatal("rollback conflict was incorrectly recorded as successful rollback")
 	}
+	if !strings.Contains(result.Evidence.LastFailure, "rollback failed") || !strings.Contains(result.Evidence.LastFailure, "changed after BedRock wrote it") {
+		t.Fatalf("rollback conflict missing from evidence: %q", result.Evidence.LastFailure)
+	}
 	data, readErr := os.ReadFile(path)
 	if readErr != nil || string(data) != "user edit during verification" {
 		t.Fatalf("concurrent edit=%q err=%v", data, readErr)
