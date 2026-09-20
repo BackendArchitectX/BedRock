@@ -1,43 +1,27 @@
 # Latest engineering handoff
 
-## 2026-09-20 — integration and release-quality pass
+## 2026-09-20 — repair-attempt mutation guard
 
 ### Current state
 
-BedRock remains a Go 1.22 local-first orchestration prototype on `main`. Current HEAD before this pass was `95862c177aa65f01e133c281c7ed55108c0728fb`. GitHub Actions run `35483701580` completed successfully on that exact commit: format, vet, unit tests, race tests, successful CLI smoke, and failed-verification rollback smoke all passed.
+BedRock remains a Go 1.22 local-first orchestration prototype on `main`. Before this pass, CI run `35487275560` on `064a9b202ec8218b0259396cef1b714e6b26eb0f` completed successfully.
 
 ### Work completed
 
-- Re-inspected current `main`, recent commits, repository tree, CI, README, `docs/ENGINEERING_LEDGER.md`, and the separate handoff files rather than trusting prior scheduled-run claims.
-- Confirmed the latest nested-root dirty-path correction is present and green on current HEAD. `DirtyPaths` scopes Git status to the selected run root and translates Git paths into the same coordinate space used by provider changes.
-- Identified documentation entropy: `CURRENT.md`, `VERIFY_HANDOFF.md`, and `RED_TEAM_HANDOFF.md` had become stale competing sources of "current" state while their durable history already exists in `ENGINEERING_LEDGER.md`.
-- Consolidated continuation state here and removed those three stale handoff files. `ENGINEERING_LEDGER.md` remains the append-only engineering history; this file is the single concise current handoff.
-- No runtime architecture, dependency, scheduler concept, or product feature was added in this pass.
+- Re-inspected current `main`, recent commits, CI, `docs/ENGINEERING_LEDGER.md`, runtime change tracking, engine retry behavior, and existing concurrency tests.
+- Challenged the new provider-execution mutation guard and found a second-attempt data-loss hole: after a failed verification, the engine removed every previously changed path from the fresh dirty-path set without checking whether the file still contained BedRock's last write. A user edit between repair attempts could therefore be overwritten by the retry.
+- Added `ChangeSet.ExcludeOwnWrites`, which removes a dirty path from protection only when its current bytes still exactly match BedRock's last recorded write. Missing or externally changed files remain protected.
+- Replaced the engine's unconditional deletion of previously changed paths with that ownership check.
+- Added `TestEnginePreservesTargetChangedBetweenRepairAttempts`, which performs a real temporary Git workflow, causes the first provider edit to fail verification, mutates the target externally during the second provider call, and requires BedRock to reject the overwrite and preserve the external contents.
 
 ### Verification actually observed
 
-GitHub Actions run `35483701580` on pre-pass HEAD `95862c177aa65f01e133c281c7ed55108c0728fb`: **PASS**.
+- Baseline CI run `35487275560` on `064a9b202ec8218b0259396cef1b714e6b26eb0f`: **PASS**.
+- CI run `35487745993` on the first source commit failed only at `gofmt` because `changes.go` lacked a trailing newline; vet/tests/race/smokes were skipped. The exact formatter log was inspected and the newline was fixed in `809c5642b52d119787023e074e6cb56c774caafc`.
+- The new regression test file also received a terminating newline in `086bb048ec84ef01f716c9337d26fa7b2c3bb875`.
+- CI for the final source + regression-test HEAD was not yet visible/completed when this handoff was written. Therefore the new behavior is **UNVERIFIED** until a run containing `086bb048...` (or a descendant containing it) completes successfully.
+- No local Go execution is claimed; this pass used the connected GitHub repository/API.
 
-Executed CI stages:
+### Remaining risks / next action
 
-- format: PASS
-- `go vet ./...`: PASS
-- `go test ./...`: PASS
-- `go test -race ./...`: PASS
-- real built-CLI success smoke with deterministic fake provider: PASS
-- failed-verification rollback smoke preserving pre-existing user work: PASS
-
-No local Go execution is claimed; this pass used the connected GitHub repository/API. This documentation-only cleanup still requires its own CI run before the resulting HEAD should be described as green.
-
-### Remaining risks
-
-- Provider subprocesses execute with local-user permissions; BedRock does not provide an OS/container sandbox.
-- Verification commands are intentionally user-supplied shell commands and execute with local-user permissions.
-- Dirty paths are captured before provider execution. A user/process editing a previously clean target after that snapshot but before BedRock writes it is a remaining concurrent-mutation/data-loss risk.
-- No live OpenAI/Anthropic/local-model adapter end-to-end run is claimed; CI uses a deterministic fake provider.
-- Windows and macOS behavior remain unverified.
-- Secret filtering/redaction is defense in depth, not a proof that arbitrary secrets cannot appear in ordinary tracked source or command output.
-
-### Next highest-value action
-
-First inspect CI for the current documentation-cleanup HEAD. If green, prioritize concurrent-mutation protection at the file-write boundary: BedRock should detect when a target changed after its run snapshot / after BedRock's previous write and refuse to overwrite external user changes. Prove the behavior with deterministic regression tests before adding broader provider or orchestration features.
+First inspect CI on the current HEAD and repair any actual format/vet/unit/race/CLI-smoke failure. If green, challenge the remaining time-of-check/time-of-use window between the final dirty-path check and `os.WriteFile`: the current guard detects mutations made during provider execution and between repair attempts, but another process could still race after the check and before the write. Do not add a complex locking subsystem unless a simple safe write strategy can materially reduce that window. Provider and verification subprocesses still run with local-user permissions; no sandbox claim should be made.
