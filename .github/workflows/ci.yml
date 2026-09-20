@@ -17,6 +17,51 @@ jobs:
         with:
           go-version: "1.22.x"
           cache: false
+      - name: Launcher prerequisite failure safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          real_go="$(command -v go)"
+          go build -o "$RUNNER_TEMP/bedrock-demo-launcher" ./scripts/demo.go
+
+          # An unsupported Go version must fail before the launcher creates or cleans its workspace.
+          old_go_bin="$RUNNER_TEMP/old-go-bin"
+          old_go_work="$RUNNER_TEMP/old-go-workspace"
+          mkdir "$old_go_bin"
+          cat > "$old_go_bin/go" <<'EOF'
+          #!/bin/sh
+          if [ "$1" = env ] && [ "$2" = GOVERSION ]; then
+            printf 'go1.21.13\n'
+            exit 0
+          fi
+          exit 99
+          EOF
+          chmod +x "$old_go_bin/go"
+          set +e
+          PATH="$old_go_bin:$PATH" BEDROCK_DEMO_DIR="$old_go_work" "$RUNNER_TEMP/bedrock-demo-launcher" > "$RUNNER_TEMP/old-go.log" 2>&1
+          old_go_exit=$?
+          set -e
+          test "$old_go_exit" -ne 0
+          test ! -e "$old_go_work"
+          grep -q 'Go 1.22+ is required; found go1.21.13' "$RUNNER_TEMP/old-go.log"
+
+          # Missing Git must likewise fail before any workspace mutation. Keep only a
+          # Go shim on PATH so the version check succeeds while git is unavailable.
+          no_git_bin="$RUNNER_TEMP/no-git-bin"
+          no_git_work="$RUNNER_TEMP/no-git-workspace"
+          mkdir "$no_git_bin"
+          cat > "$no_git_bin/go" <<EOF
+          #!/bin/sh
+          exec "$real_go" "\$@"
+          EOF
+          chmod +x "$no_git_bin/go"
+          set +e
+          PATH="$no_git_bin" BEDROCK_DEMO_DIR="$no_git_work" "$RUNNER_TEMP/bedrock-demo-launcher" > "$RUNNER_TEMP/no-git.log" 2>&1
+          no_git_exit=$?
+          set -e
+          test "$no_git_exit" -ne 0
+          test ! -e "$no_git_work"
+          grep -q 'Git is required and was not found on PATH' "$RUNNER_TEMP/no-git.log"
       - name: Format
         run: |
           files="$(gofmt -l .)"
