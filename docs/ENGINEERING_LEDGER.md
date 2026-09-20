@@ -4,28 +4,38 @@
 
 BedRock is a Go 1.22 local-first orchestration prototype on `main`. The current vertical slice accepts a task, gathers bounded repository context, invokes a provider-neutral command adapter, applies bounded file changes while protecting pre-existing dirty paths and repository metadata, runs explicit verification commands, retries once by default with failure evidence, and rolls changes back when verification never succeeds.
 
-## 2026-09-20 canonical launcher Windows verification
+The only canonical one-step demo/start path is:
 
-### Work completed
+```text
+go run ./scripts/demo.go
+```
 
-- Reconciled against current `origin/main` at `f574dba00d1e44f1f2677bd27bccc00c7f33f0b0`, not the superseded pre-rewrite hashes. GitHub Actions run `35497452398` for that baseline completed successfully.
-- Challenged the cross-platform `go run ./scripts/demo.go` launcher against the one-step acceptance requirement. The implementation already branches verifier syntax by `runtime.GOOS`, but CI only exercised the canonical launcher on Ubuntu. Therefore Windows one-step support was implemented but not independently proven.
-- Added a dedicated `windows-latest` CI job that executes the exact canonical command, requires the real orchestration result to equal `good`, requires emitted `status: VERIFIED` and `BedRock demo: READY`, reruns the same command to exercise idempotent owned-workspace cleanup, and exercises the foreign-workspace ownership guard while proving its sentinel remains unchanged.
-- Kept the Linux race gate unchanged. The user-reproduced Windows ThreadSanitizer startup failure is environmental and this Windows launcher job intentionally does not run `go test -race`; Linux CI remains authoritative for race detection.
+It validates Go 1.22+ and Git, protects caller-selected workspaces with an ownership marker and dangerous-root/checkout containment checks, builds the real CLI plus deterministic provider, initializes an isolated Git repository, runs verified orchestration, validates the produced result, and prints `READY` only after success. It is intentionally a deterministic prototype path: BedRock currently has no backend server or web UI and no built-in live-model provider, so no application URL or live-provider readiness is claimed.
 
-### Tests actually executed / evidence
+## 2026-09-20 release integration
 
-- Baseline `f574dba00d1e44f1f2677bd27bccc00c7f33f0b0`: GitHub Actions run `35497452398` completed successfully, including Linux format, vet, tests, race tests, canonical launcher, rerun, foreign-workspace guard, and failure rollback smoke.
-- Windows CI coverage commit: `631cda1506a1671a342dd0b1c802f8bf86ea5e82`.
-- At the first post-push inspection, a workflow run for `631cda1` was not yet visible in the Actions listing. Therefore the new Windows job is **UNVERIFIED** until a run for this commit or a descendant executes successfully. Do not infer PASS from the green predecessor.
+### Verified baseline
+
+- Reconciled against current rewritten `origin/main`; superseded pre-rewrite hashes remain superseded.
+- GitHub Actions run `35501930929` for `29a79cb7a57e8ac3dd42f0cc7222824960a92043` completed successfully.
+- Linux CI passed format, vet, unit tests, `go test -race ./...`, canonical one-step start, rerun/idempotency and failure/rollback smoke.
+- Windows CI passed the exact canonical one-step launcher, result/readiness assertions, rerun behavior and foreign-workspace protection.
+- Windows race detection is not executed because the user independently reproduced a ThreadSanitizer startup/address-space failure outside BedRock; Linux CI remains the authoritative race gate.
+
+### Integration delta
+
+- Removed obsolete `scripts/demo.sh`. It duplicated the canonical Go launcher, was no longer referenced by README/CI, was POSIX-only, and had weaker workspace-marker validation than `scripts/demo.go`. Keeping it created an unnecessary second launcher implementation and a future security/documentation drift risk.
+- The canonical Go launcher remains the sole normal startup implementation and command.
+
+### Verification status
+
+- Pre-change baseline `29a79cb7`: GitHub Actions run `35501930929` PASS on both Linux and Windows jobs.
+- Removal commit `54aeb525d8babe567cec0e8642a158d98eef7221`: CI pending at handoff; do not infer PASS from the predecessor.
+- This ledger-refresh commit also requires current-HEAD CI before release claims are advanced.
 
 ### Remaining risks / next action
 
-First inspect current-HEAD CI. If the Windows job fails, repair the actual launcher/PowerShell portability defect rather than weakening assertions. If it passes, Windows one-step startup can be claimed for the deterministic prototype. The next one-step acceptance gap should then be prerequisite diagnostics: the launcher says Go 1.22+ is required but currently only checks that a `go` executable exists; determine whether explicit version validation adds actionable value beyond the `go run`/`go.mod` failure without duplicating Go's own compatibility logic. Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made.
-
-## 2026-09-20 one-step launcher cleanup safety
-
-The canonical launcher uses an ownership marker and refuses existing unmarked workspaces. It only recreates BedRock-owned `bin` and `repository` children. This protects caller-selected foreign directories from recursive cleanup. Detailed historical commits before the controlled author rewrite are superseded; current repository state is authoritative.
+First inspect CI for the current HEAD and repair any real regression before further work. If green, the deterministic prototype satisfies the documented one-step launcher gate on Linux and Windows CI with one launcher implementation. Provider subprocesses and verification commands still execute with local user permissions; no sandbox claim should be made. Live-provider behavior and broader OS/environment combinations remain outside the deterministic demo proof. Prefer security review, dependency health, clean-checkout validation and factual release documentation over new feature growth.
 
 ## Historical notes
 
