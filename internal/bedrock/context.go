@@ -125,12 +125,19 @@ func Snapshot(root, task string, maxFiles, maxBytes int) ([]FileContext, error) 
 }
 
 func gitContextPaths(root string) (map[string]struct{}, bool, error) {
-	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
-		if os.IsNotExist(err) {
-			return nil, false, nil
+	probe := exec.Command("git", "-C", root, "rev-parse", "--is-inside-work-tree")
+	probeOut, err := probe.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return nil, false, fmt.Errorf("inspect git worktree: %w", err)
 		}
-		return nil, false, fmt.Errorf("inspect git metadata: %w", err)
+		return nil, false, nil
 	}
+	if strings.TrimSpace(string(probeOut)) != "true" {
+		return nil, false, nil
+	}
+
 	cmd := exec.Command("git", "-C", root, "ls-files", "-co", "--exclude-standard", "-z")
 	out, err := cmd.Output()
 	if err != nil {
