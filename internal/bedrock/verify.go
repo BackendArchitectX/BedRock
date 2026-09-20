@@ -58,6 +58,9 @@ func (v ShellVerifier) Verify(ctx context.Context, root string) ([]VerificationR
 			if errors.Is(ctxErr, context.DeadlineExceeded) {
 				return results, fmt.Errorf("verification command %q timed out: %w", redactedCommand, ctxErr)
 			}
+			if ctxErr != nil {
+				return results, fmt.Errorf("verification command %q canceled: %w", redactedCommand, ctxErr)
+			}
 			return results, fmt.Errorf("verification command %q failed with exit code %d", redactedCommand, exitCode)
 		}
 	}
