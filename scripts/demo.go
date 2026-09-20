@@ -62,11 +62,14 @@ func run() error {
 	if err := rejectSymlinkComponents(work); err != nil {
 		return err
 	}
-	if containsPath(root, work) {
-		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it is inside the BedRock checkout %s", work, root)
-	}
+	// Check the containing-workspace direction first so equality retains the
+	// established checkout-protection diagnostic. A strict child still falls
+	// through to the inside-checkout guard below.
 	if containsPath(work, root) {
 		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it contains the BedRock checkout %s", work, root)
+	}
+	if containsPath(root, work) {
+		return fmt.Errorf("refusing to use %s as BEDROCK_DEMO_DIR because it is inside the BedRock checkout %s", work, root)
 	}
 	marker := filepath.Join(work, ".bedrock-demo-owned")
 	newWorkspace := false
