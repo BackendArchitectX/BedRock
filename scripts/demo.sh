@@ -17,13 +17,19 @@ esac
 
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 work="${BEDROCK_DEMO_DIR:-${TMPDIR:-/tmp}/bedrock-demo}"
+marker="$work/.bedrock-demo-owned"
 bin="$work/bin"
 repo="$work/repository"
 
-# This launcher is intentionally deterministic and secret-free. It proves the
-# complete currently supported BedRock workflow without requiring a live model
-# account. Real provider adapters remain an advanced/manual path.
-rm -rf "$work"
+# Never recursively clean a caller-selected directory unless a previous BedRock
+# demo run marked it as owned. This keeps reruns deterministic without turning
+# BEDROCK_DEMO_DIR into an arbitrary-directory deletion primitive.
+if [ -e "$work" ] && [ ! -f "$marker" ]; then
+  fail "refusing to reuse $work because it is not marked as a BedRock demo directory; choose an empty BEDROCK_DEMO_DIR or remove it yourself."
+fi
+mkdir -p "$work"
+: > "$marker"
+rm -rf "$bin" "$repo"
 mkdir -p "$bin" "$repo"
 git -C "$repo" init -q
 
