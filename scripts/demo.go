@@ -146,7 +146,14 @@ func run() error {
 	if runtime.GOOS == "windows" {
 		verify = "for /f %i in (result.txt) do @if \"%i\"==\"good\" (exit /b 0) else (exit /b 1)"
 	}
-	if err := command(root, bedrock, "run", "--repo", repo, "--task", "write deterministic result", "--provider-bin", provider, "--verify", verify); err != nil {
+	runArgs := []string{"run", "--repo", repo, "--task", "write deterministic result", "--provider-bin", provider, "--verify", verify}
+	// The deterministic provider's failure hook is test-only. Explicitly opt it
+	// into the provider environment so CommandProvider's secure environment
+	// allowlist remains effective for every ordinary launcher run.
+	if os.Getenv("BEDROCK_FAKE_PROVIDER_FAIL") == "1" {
+		runArgs = append(runArgs, "--provider-env", "BEDROCK_FAKE_PROVIDER_FAIL")
+	}
+	if err := command(root, bedrock, runArgs...); err != nil {
 		return err
 	}
 	result, err := os.ReadFile(filepath.Join(repo, "result.txt"))
