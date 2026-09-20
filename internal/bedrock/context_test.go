@@ -13,14 +13,22 @@ func TestSnapshotExcludesLikelySecretFiles(t *testing.T) {
 		".env":                                 "API_KEY=secret\n",
 		".env.local":                           "TOKEN=secret\n",
 		".envrc":                               "export TOKEN=secret\n",
+		".git-credentials":                     "https://user:secret@example.com\n",
 		"credentials":                          "aws_secret_access_key=secret\n",
 		"credentials.json":                     `{"token":"secret"}`,
 		"application_default_credentials.json": `{"private_key":"secret"}`,
 		"service-account.json":                 `{"private_key":"secret"}`,
 		"deploy/secrets.yaml":                  "token: secret\n",
+		"infra/terraform.tfstate":              `{"secret":"value"}`,
+		"infra/terraform.tfstate.backup":       `{"secret":"old-value"}`,
 		"tls/private.pem":                      "secret",
 		"tls/private.key":                      "secret",
 		".ssh/id_ed25519":                      "secret",
+		".aws/credentials":                     "aws_secret_access_key=secret\n",
+		".azure/accessTokens.json":             `{"token":"secret"}`,
+		".docker/config.json":                  `{"auths":{"registry":{"auth":"secret"}}}`,
+		".kube/config":                         "token: secret\n",
+		".gnupg/private-keys-v1.d/key":         "secret",
 		"config/application.yaml":              "server: local\n",
 	}
 	for name, content := range files {
@@ -47,9 +55,11 @@ func TestSnapshotExcludesLikelySecretFiles(t *testing.T) {
 		}
 	}
 	for _, secret := range []string{
-		".env", ".env.local", ".envrc", "credentials", "credentials.json",
+		".env", ".env.local", ".envrc", ".git-credentials", "credentials", "credentials.json",
 		"application_default_credentials.json", "service-account.json", "deploy/secrets.yaml",
-		"tls/private.pem", "tls/private.key", ".ssh/id_ed25519",
+		"infra/terraform.tfstate", "infra/terraform.tfstate.backup", "tls/private.pem", "tls/private.key",
+		".ssh/id_ed25519", ".aws/credentials", ".azure/accessTokens.json", ".docker/config.json",
+		".kube/config", ".gnupg/private-keys-v1.d/key",
 	} {
 		if paths[secret] {
 			t.Errorf("secret-like file %q leaked into provider context", secret)
@@ -58,7 +68,7 @@ func TestSnapshotExcludesLikelySecretFiles(t *testing.T) {
 }
 
 func TestSensitiveContextPathDoesNotBlockOrdinarySource(t *testing.T) {
-	for _, name := range []string{"credentials.go", "key.go", "environment.go", "monkey.go", "secrets.go"} {
+	for _, name := range []string{"credentials.go", "key.go", "environment.go", "monkey.go", "secrets.go", "terraform.tf"} {
 		if sensitiveContextPath(name) {
 			t.Errorf("ordinary source file %q was classified as secret", name)
 		}
