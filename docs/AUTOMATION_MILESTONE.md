@@ -9,10 +9,9 @@
 ### Gate baseline
 
 - Main HEAD at gate initialization: `2d6aace2512eced6c784754c97aae81794caaa43`.
-- Milestone branch was absent and has been created as `automation/bedrock-current` from that exact main HEAD.
-- Main CI run `35527885270` for `2d6aace2512eced6c784754c97aae81794caaa43` completed successfully.
-- `docs/ENGINEERING_LEDGER.md` and `docs/LATEST_HANDOFF.md` were inspected before initializing this gate.
-- No milestone-branch worker diff existed to accept or merge in this integration cycle.
+- Milestone branch: `automation/bedrock-current`.
+- Main CI run `35527885270` for the initialization baseline completed successfully.
+- Latest main was fetched again before this handoff and remained `2d6aace2512eced6c784754c97aae81794caaa43`; no reconciliation was required.
 
 ### M1 acceptance contract
 
@@ -26,14 +25,30 @@ M1 remains open until executable evidence demonstrates all of the following toge
 - existing safe-change and rollback behavior remains intact;
 - focused behavior tests and applicable broader regression tests pass.
 
-### Evidence inspected this cycle
+### Challenge pass
 
-Current main is a Go 1.22 local-first orchestration prototype with bounded context, command and OpenAI-compatible HTTP providers, bounded file changes, explicit verification, one retry by default, and rollback on terminal verification failure. The canonical deterministic acceptance path remains `go run ./scripts/demo.go`. Current documentation also states that provider subprocesses and verification commands execute with local-user permissions and makes no sandbox claim.
+**Challenged assumption:** the pre-M1 engine treated only post-change verification as evidence and emitted `VERIFIED` whenever configured checks passed. That conflated check success with task completion and made an already-green/no-op run indistinguishable from an actual improvement. Provider response summaries were also discarded, weakening later repair/review evidence.
 
-The latest handoff reports verification commands are now included in provider context with sensitive environment values redacted. That is useful groundwork but does not independently satisfy the M1 truthful-outcome contract above.
+**Implementation HEAD before this handoff:** `bfd516fbd5df0c997b6e8e77314678e5b3c7c4e0`.
 
-### Blocker / next action
+Changes on the milestone branch:
 
-Inspect/Build/Challenge/Verify/Red-Team workers should work only on `automation/bedrock-current` and produce a bounded M1 implementation plus executable negative-path evidence. Integration must specifically inspect persisted run evidence and execute the no-op/already-green case before acceptance. Do not advance to M2 and do not merge this branch to main until the complete M1 gate passes.
+- `Evidence` now persists `baselineVerification` separately from post-change `verification` and retains per-attempt `providerSummaries`.
+- The engine runs configured verification before provider execution, records its exact results, and passes baseline failure evidence into the first provider attempt so an initially-red repository can be repaired deliberately.
+- Passing post-change checks now produce `CHECKS_PASSED`, not `VERIFIED`; this is intentionally a check-evidence statement rather than a task-completion claim.
+- Successful post-change verification clears stale failure text so persisted evidence does not report a repaired baseline failure as the final failure.
 
-When integrating, first reconcile the branch with the then-current `origin/main`; never force-push or discard concurrent valid work.
+### Verification actually performed
+
+- Repository state, milestone file, engine, evidence types, CLI status output, and canonical demo launcher were inspected through the GitHub repository API.
+- A local checkout was attempted for `gofmt`/`go vet`/`go test`, but the execution environment could not resolve `github.com`; therefore no local Go verification was executed and no pass is claimed.
+- No workflow run was available for `bfd516f...` at handoff time, so CI is also not claimed.
+- Known compatibility risk requiring the next worker's immediate attention: existing tests include a literal `VERIFIED` expectation and must be updated alongside focused M1 tests before this slice can be accepted.
+
+### Remaining M1 acceptance gap
+
+This materially advances M1 but does not close it. Missing executable evidence includes the already-green + zero-change case, explicit assertions for baseline/post-change persistence and provider summaries, regression updates for the status semantic change, and stable diff evidence (hash and/or persisted diff) suitable for later review/repair. Broader Go verification also remains unexecuted for this branch.
+
+### One next action
+
+Add focused engine tests for (1) already-green + no-op => `CHECKS_PASSED` with identical baseline/post verification and no task-success claim, and (2) initially-red => provider repair => passing post verification with baseline failure preserved; update the stale `VERIFIED` assertion, then run `gofmt`, `go vet ./...`, and `go test ./...`. Do not advance CURRENT beyond M1.
