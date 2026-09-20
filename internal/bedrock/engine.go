@@ -121,6 +121,9 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 		results, verifyErr := e.Verifier.Verify(ctx, root)
 		evidence.Verification = results
 		if verifyErr == nil {
+			verifyErr = verificationResultsError(results)
+		}
+		if verifyErr == nil {
 			if len(results) == 0 {
 				evidence.Status = "UNVERIFIED"
 			} else {
@@ -140,6 +143,15 @@ func (e Engine) Run(ctx context.Context, root, task string) (RunResult, error) {
 		}
 	}
 	return finish(errors.New("attempt loop ended unexpectedly"))
+}
+
+func verificationResultsError(results []VerificationResult) error {
+	for _, result := range results {
+		if result.ExitCode != 0 {
+			return fmt.Errorf("verification command %q reported exit code %d without an error", result.Command, result.ExitCode)
+		}
+	}
+	return nil
 }
 
 func verificationFailure(err error, results []VerificationResult) string {
