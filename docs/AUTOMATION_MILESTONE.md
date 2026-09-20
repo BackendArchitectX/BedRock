@@ -10,8 +10,8 @@
 
 - Main HEAD observed this pass: `2d6aace2512eced6c784754c97aae81794caaa43`.
 - Milestone branch: `automation/bedrock-current`.
-- Branch HEAD after the focused repair commit: `58b1653b1786a80d9e40015ebbf4228c7882620e`.
-- Main remained behind the milestone branch; no main reconciliation conflict was observed.
+- Branch HEAD before this handoff update: `1470715303afd6d18d12073aaf6f486b7c9c16c5`.
+- Main remained unchanged while the milestone branch advanced; no main reconciliation conflict was observed.
 
 ### M1 acceptance contract
 
@@ -27,27 +27,26 @@ M1 remains open until executable evidence demonstrates all of the following toge
 
 ### Independent challenge this pass
 
-Inspection disproved the previous handoff's assumption that the branch was merely waiting for new tests: `internal/bedrock/engine_test.go` still asserted the historical `VERIFIED` status in the successful repair case, so the branch's own regression suite was incompatible with the new M1 semantics. No workflow run existed for `automation/bedrock-current`, and a local checkout could not be obtained because this execution environment could not resolve `github.com`; therefore no Go command is claimed as executed successfully.
+The branch's M1 evidence still recorded changed paths but had no content-sensitive diff evidence. Two runs that touched the same path with different patches were therefore indistinguishable from persisted evidence alone, preventing later review from proving which mutation was actually attempted/applied without rereading mutable repository state.
 
-Focused repair commit `58b1653b1786a80d9e40015ebbf4228c7882620e`:
+Focused repair through `1470715303afd6d18d12073aaf6f486b7c9c16c5`:
 
-- changes the successful-repair expectation from `VERIFIED` to `CHECKS_PASSED`;
-- asserts the initially-red baseline evidence remains distinct from the passing post-change evidence;
-- asserts provider summaries survive both attempts;
-- adds an already-green + zero-change provider regression requiring `CHECKS_PASSED`, zero changed paths, before/after verification evidence, and the provider summary, without any task-completion status.
+- adds a deterministic SHA-256 `diffHash` over sorted changed paths plus before/after content digests;
+- persists the hash alongside changed paths without copying raw changed content into evidence;
+- leaves zero-change runs with no diff hash, preserving truthful no-op semantics;
+- adds regressions requiring identical mutations to hash identically, different mutations to hash differently, engine evidence to include the hash for a changed path, and persisted evidence not to contain raw patch content.
 
 ### Verification actually performed
 
-- Fetched and inspected current `main` and `automation/bedrock-current` branch heads.
-- Inspected the M1 contract, engine implementation, evidence schema, existing engine regression suite, branch commit history, and branch Actions history.
-- Confirmed branch Actions history currently contains no workflow runs.
-- Attempted a fresh local clone to run `gofmt`, `go vet ./...`, and `go test ./...`; clone failed before checkout because DNS could not resolve `github.com`. No local Go verification is claimed.
-- The new test source has not yet been proven by `gofmt` or compilation in this environment; Integrate must not accept M1 from this handoff alone.
+- Fetched current `main` and `automation/bedrock-current` and re-fetched `main` after the edits; main remained `2d6aace2512eced6c784754c97aae81794caaa43`.
+- Inspected the M1 contract, engine finish/evidence path, evidence schema, ChangeSet original/written tracking, and existing focused tests.
+- Attempted a fresh local clone again; the execution environment still failed before checkout because DNS could not resolve `github.com`.
+- GitHub reports no commit status checks for `1470715303afd6d18d12073aaf6f486b7c9c16c5`; therefore no `gofmt`, compile, `go vet`, `go test`, integration, or CI PASS is claimed for these changes.
 
 ### Remaining M1 acceptance gap
 
-M1 still lacks stable persisted diff evidence: `Evidence` currently records changed paths but has no diff or diff hash field. The branch also still needs executable Go verification of the focused regressions and broader suite. The new test commit itself must be formatted/compiled and corrected if those gates expose issues.
+The branch still needs executable formatting/compilation and focused/broader Go verification. The prior `engine_test.go` commit also requires `gofmt`; its compact formatting remains unverified. Integrate must not accept M1 until the branch is actually formatted, compiled, and tested and the persisted `diffHash` regression passes.
 
 ### One next action
 
-Run `gofmt` on the focused engine test and execute `go test ./internal/bedrock`, then `go vet ./...` and `go test ./...`; after those are green, implement stable persisted diff evidence (prefer a bounded diff hash plus changed paths) and add a regression proving it changes with the applied patch. Do not advance CURRENT beyond M1.
+Obtain an executable checkout, run `gofmt` on the modified Go files (especially `engine_test.go`), then run `go test ./internal/bedrock`, `go vet ./...`, and `go test ./...`; correct any compile/test failures without advancing CURRENT beyond M1.
