@@ -17,8 +17,7 @@ type ProviderRequest struct {
 
 type FileChange struct {
 	Path    string `json:"path"`
-	Content string `json:"content,omitempty"`
-	Delete  bool   `json:"delete,omitempty"`
+	Content string `json:"content"`
 }
 
 type ProviderResponse struct {
