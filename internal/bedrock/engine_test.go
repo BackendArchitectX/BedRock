@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,6 +44,17 @@ type inconsistentVerifier struct{}
 
 func (inconsistentVerifier) Verify(_ context.Context, _ string) ([]VerificationResult, error) {
 	return []VerificationResult{{Command: "broken-contract", ExitCode: 1, Output: "failed"}}, nil
+}
+
+type concurrentEditVerifier struct {
+	path string
+}
+
+func (v concurrentEditVerifier) Verify(_ context.Context, root string) ([]VerificationResult, error) {
+	if err := os.WriteFile(filepath.Join(root, v.path), []byte("user edit during verification"), 0o644); err != nil {
+		return nil, err
+	}
+	return []VerificationResult{{Command: "failing-check", ExitCode: 1, Output: "failed"}}, errors.New("verification failed")
 }
 
 func TestEngineRepairsAfterFailedVerification(t *testing.T) {
@@ -137,5 +149,36 @@ func TestEngineRejectsNonzeroVerificationResultWithoutError(t *testing.T) {
 	}
 	if string(data) != "original" {
 		t.Fatalf("rollback content=%q", data)
+	}
+}
+
+func TestEngineReportsRollbackConflictWithoutOverwritingConcurrentEdit(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "result.txt")
+	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	provider := &scriptedProvider{responses: []ProviderResponse{
+		{Changes: []FileChange{{Path: "result.txt", Content: "provider-change"}}},
+	}}
+	engine := Engine{
+		Provider:    provider,
+		Verifier:    concurrentEditVerifier{path: "result.txt"},
+		MaxAttempts: 1,
+	}
+
+	result, err := engine.Run(context.Background(), root, "change result")
+	if err == nil || !strings.Contains(err.Error(), "rollback failed") {
+		t.Fatalf("expected rollback conflict in run error, got %v", err)
+	}
+	if result.Evidence.RolledBack {
+		t.Fatal("rollback conflict was incorrectly recorded as successful rollback")
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != "user edit during verification" {
+		t.Fatalf("concurrent edit was overwritten: %q", data)
 	}
 }
