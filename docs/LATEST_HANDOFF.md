@@ -1,28 +1,43 @@
 # Latest engineering handoff
 
-## 2026-09-20 — nested-root dirty-work protection correction
+## 2026-09-20 — integration and release-quality pass
 
 ### Current state
 
-Before this pass, current `main` (`33cc7d58e1835107561f6ee062fa8828921ca11b`) had successful CI run `35481923304`, including format, vet, unit, race, successful CLI smoke, and failed-verification rollback smoke.
+BedRock remains a Go 1.22 local-first orchestration prototype on `main`. Current HEAD before this pass was `95862c177aa65f01e133c281c7ed55108c0728fb`. GitHub Actions run `35483701580` completed successfully on that exact commit: format, vet, unit tests, race tests, successful CLI smoke, and failed-verification rollback smoke all passed.
 
 ### Work completed
 
-- Re-inspected current commits, CI, `changes.go`, tests, and `docs/ENGINEERING_LEDGER.md` rather than trusting the preceding handoff.
-- Challenged the preceding nested-root test repair and found that it had encoded the wrong coordinate system as expected behavior. `DirtyPaths(nested)` returned `nested/owned.txt` relative to the enclosing Git worktree, while `ChangeSet.Apply(nested, ...)` compares provider paths relative to the BedRock run root (`owned.txt`). The two names therefore never matched, so a provider could overwrite dirty user work when BedRock was invoked from a subdirectory of a larger worktree.
-- Fixed `DirtyPaths` to ask Git for `--relative` status scoped to `.` so protected paths use the same run-root-relative coordinates as provider changes.
-- Strengthened the regression test beyond checking a map key: it now calls `ChangeSet.Apply` against the dirty nested file, requires the overwrite to be rejected, and verifies the original bytes remain unchanged.
+- Re-inspected current `main`, recent commits, repository tree, CI, README, `docs/ENGINEERING_LEDGER.md`, and the separate handoff files rather than trusting prior scheduled-run claims.
+- Confirmed the latest nested-root dirty-path correction is present and green on current HEAD. `DirtyPaths` scopes Git status to the selected run root and translates Git paths into the same coordinate space used by provider changes.
+- Identified documentation entropy: `CURRENT.md`, `VERIFY_HANDOFF.md`, and `RED_TEAM_HANDOFF.md` had become stale competing sources of "current" state while their durable history already exists in `ENGINEERING_LEDGER.md`.
+- Consolidated continuation state here and removed those three stale handoff files. `ENGINEERING_LEDGER.md` remains the append-only engineering history; this file is the single concise current handoff.
+- No runtime architecture, dependency, scheduler concept, or product feature was added in this pass.
 
-### Commits
+### Verification actually observed
 
-- `5310d117634eb897c6c19860e30df5a056774df6` — `fix(git): align nested dirty paths with run root`
-- `f0ff2b13494911036d3addf699a0fcacacf5ac22` — `test(git): prove nested dirty overwrite rejection`
+GitHub Actions run `35483701580` on pre-pass HEAD `95862c177aa65f01e133c281c7ed55108c0728fb`: **PASS**.
 
-### Verification status
+Executed CI stages:
 
-- No local Go execution is claimed because this run used the connected GitHub repository API rather than a mounted checkout.
-- CI run `35482552410` for the regression-test HEAD was **in progress** when last inspected. The new correction is therefore **UNVERIFIED** until that run completes successfully.
+- format: PASS
+- `go vet ./...`: PASS
+- `go test ./...`: PASS
+- `go test -race ./...`: PASS
+- real built-CLI success smoke with deterministic fake provider: PASS
+- failed-verification rollback smoke preserving pre-existing user work: PASS
+
+No local Go execution is claimed; this pass used the connected GitHub repository/API. This documentation-only cleanup still requires its own CI run before the resulting HEAD should be described as green.
+
+### Remaining risks
+
+- Provider subprocesses execute with local-user permissions; BedRock does not provide an OS/container sandbox.
+- Verification commands are intentionally user-supplied shell commands and execute with local-user permissions.
+- Dirty paths are captured before provider execution. A user/process editing a previously clean target after that snapshot but before BedRock writes it is a remaining concurrent-mutation/data-loss risk.
+- No live OpenAI/Anthropic/local-model adapter end-to-end run is claimed; CI uses a deterministic fake provider.
+- Windows and macOS behavior remain unverified.
+- Secret filtering/redaction is defense in depth, not a proof that arbitrary secrets cannot appear in ordinary tracked source or command output.
 
 ### Next highest-value action
 
-Inspect CI run `35482552410` first. If green, add an engine-level nested-root regression using a scripted provider to prove the complete `Engine.Run` path refuses to overwrite dirty work from a nested invocation. If CI fails, repair the actual failure before adding capabilities. Do not add larger orchestration abstractions while this safety boundary is still being proven.
+First inspect CI for the current documentation-cleanup HEAD. If green, prioritize concurrent-mutation protection at the file-write boundary: BedRock should detect when a target changed after its run snapshot / after BedRock's previous write and refuse to overwrite external user changes. Prove the behavior with deterministic regression tests before adding broader provider or orchestration features.
