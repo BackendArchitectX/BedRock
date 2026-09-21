@@ -94,17 +94,18 @@ func captureJournalOriginal(rel, target string) (JournalOriginal, error) {
 }
 
 // RecordMutationIntent durably records the exact content hash BedRock intends
-// to write before the write occurs. The first pre-run original is immutable;
-// repair attempts may only replace the intended hash. A path first introduced
-// by a later repair attempt is captured and persisted here before that attempt
-// may mutate it, so one run journal retains ownership across all attempts.
+// to write before the write occurs. The journal must already be MUTATING so
+// durable state can never claim PREPARED while containing mutation ownership.
+// The first pre-run original is immutable; repair attempts may only replace the
+// intended hash. A path first introduced by a later repair attempt is captured
+// and persisted here before that attempt may mutate it.
 func RecordMutationIntent(path, requested string, intended []byte) (RunJournal, error) {
 	journal, err := loadRunJournal(path)
 	if err != nil {
 		return RunJournal{}, err
 	}
-	if journal.State == JournalCompleted {
-		return RunJournal{}, errors.New("cannot record mutation intent for completed journal")
+	if journal.State != JournalMutating {
+		return RunJournal{}, fmt.Errorf("cannot record mutation intent while journal is %s", journal.State)
 	}
 	rel, target, err := secureTarget(journal.Repository, requested)
 	if err != nil {
