@@ -10,8 +10,8 @@
 
 - Main HEAD observed this pass: `2d6aace2512eced6c784754c97aae81794caaa43`.
 - Milestone branch: `automation/bedrock-current`.
-- Milestone implementation HEAD inspected: `e8053edbd361e6114d0c891fee4c0a3e2421f1cc`.
-- Main remained unchanged; the milestone branch is based on that main baseline.
+- Milestone implementation HEAD before this handoff update: `a6931357741de1d6484dc3c4fac64def912ec257`.
+- Main remained unchanged; comparison reported the milestone branch ahead of main and not behind.
 
 ### M1 acceptance contract
 
@@ -25,30 +25,26 @@ M1 remains open until executable evidence demonstrates all of the following toge
 - existing safe-change and rollback behavior remains intact;
 - focused behavior tests and applicable broader regression tests pass.
 
-### Independent acceptance evidence this pass
+### Challenged assumption and changes this pass
 
-GitHub Actions CI run `35538102190` executed against PR merge commit `89fd6a61884e0b88d34dbf409a1df565980b0c80`, combining milestone HEAD `e8053edbd361e6114d0c891fee4c0a3e2421f1cc` with unchanged main `2d6aace2512eced6c784754c97aae81794caaa43`.
+The previous repair attempt was correctly reverted because it accidentally changed the launcher prerequisite fixture from `go env GOVERSION` to `go env env`. The semantic CI repair itself is still required, but it must be isolated from prerequisite behavior.
 
-The run FAILED and therefore M1 is rejected this cycle:
+This pass changed only the three stale success assertions in `.github/workflows/ci.yml` from `status: VERIFIED` to `status: CHECKS_PASSED` (including the Windows diagnostic text). The prerequisite fixture remains exactly `if [ "$1" = env ] && [ "$2" = GOVERSION ]`; READY and result assertions remain intact. No BedRock runtime architecture was derived from the automation pipeline.
 
-- Linux prerequisite-safety step passed.
-- Linux `Format` failed because `internal/bedrock/engine_test.go` is not gofmt-clean. `go vet`, tests, Linux race, canonical demo, and rollback smoke were consequently skipped.
-- Windows canonical launcher executed successfully through the BedRock run itself and emitted `status: CHECKS_PASSED` plus `BedRock demo: READY`, but the existing CI assertion still requires the obsolete `status: VERIFIED` string and failed with `missing VERIFIED status`.
-- This Windows failure is an acceptance-suite compatibility regression caused by the intentional M1 truthful-status change, not evidence that M1 should revert to the misleading VERIFIED state. The gate must update the assertion to the truthful contract and then prove the full suite.
+### Tests actually run
 
-### M1 implementation under review
+No local Go verification could execute in this runtime. A fresh clone attempt failed before checkout because DNS resolution for `github.com` failed. Therefore this pass does **not** claim `gofmt`, `go vet ./...`, `go test ./...`, smoke, or race success.
 
-The branch contains the intended M1 direction: baseline/post verification evidence, truthful `CHECKS_PASSED` semantics rather than task-completion `VERIFIED`, no-op evidence behavior, provider summaries/attempt evidence, changed paths, and deterministic content-sensitive `diffHash` evidence without persisting raw patch content. Existing rollback/safe-change behavior is represented by focused tests but is not accepted until those tests actually execute successfully after the formatting gate is repaired.
+The prior independent CI evidence remains a failure: formatting of `internal/bedrock/engine_test.go` blocks the Linux vet/test/race/smoke sequence. The Windows launcher had reached `CHECKS_PASSED`/`READY` but failed only because CI expected the obsolete status; that assertion is now repaired on the milestone branch and requires fresh CI evidence.
 
 ### Remaining M1 acceptance gap
 
-Do not merge or advance CURRENT. Two concrete blockers must be repaired on `automation/bedrock-current`:
+Do not merge or advance CURRENT. The concrete blocker is now narrower:
 
 1. run `gofmt` on `internal/bedrock/engine_test.go` and commit only the formatting result;
-2. update the Windows canonical-launcher CI expectation from obsolete `status: VERIFIED` to the truthful M1 status contract (`CHECKS_PASSED`) without weakening the `READY`/result assertions.
-
-After those repairs, require a fresh CI run to execute and pass format, vet, focused/broader tests, Linux race, canonical launcher, rollback/safety coverage, and Windows ordinary launcher execution. M1 remains NOT ACCEPTED until that executable evidence is green.
+2. require a fresh CI run to execute and pass format, vet, focused/broader tests, Linux race, canonical launcher, rollback/safety coverage, and Windows ordinary launcher execution;
+3. independently inspect that the M1 evidence contract remains truthful after those gates pass.
 
 ### One next action
 
-Apply the two bounded acceptance repairs above, push the milestone branch, and use the resulting fresh CI run as the next Integrate gate. Do not advance to M2 before that run is green and the M1 behavioral contract is independently inspected.
+Format `internal/bedrock/engine_test.go` on `automation/bedrock-current`, push the isolated formatting commit, and use the resulting fresh PR CI run as the next Integrate gate. Do not advance to M2 before that executable evidence is green.
