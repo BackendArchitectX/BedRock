@@ -54,6 +54,45 @@ func TestPrepareRunJournalPersistsOriginalsBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestTransitionRunJournalPersistsForwardState(t *testing.T) {
+	root := t.TempDir()
+	_, path, err := PrepareRunJournal(root, "run-transition", []string{"file.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mutating, err := TransitionRunJournal(path, JournalMutating)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutating.State != JournalMutating {
+		t.Fatalf("state = %s, want %s", mutating.State, JournalMutating)
+	}
+
+	completed, err := TransitionRunJournal(path, JournalCompleted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != JournalCompleted {
+		t.Fatalf("state = %s, want %s", completed.State, JournalCompleted)
+	}
+
+	persistedBytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted RunJournal
+	if err := json.Unmarshal(persistedBytes, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	if persisted.State != JournalCompleted {
+		t.Fatalf("persisted state = %s, want %s", persisted.State, JournalCompleted)
+	}
+	if _, err := TransitionRunJournal(path, JournalMutating); err == nil {
+		t.Fatal("expected completed journal to reject backward transition")
+	}
+}
+
 func TestPrepareRunJournalRejectsUnsafeAndDuplicatePaths(t *testing.T) {
 	root := t.TempDir()
 	for _, paths := range [][]string{{"../escape"}, {"same.txt", "same.txt"}, {".git/config"}} {
