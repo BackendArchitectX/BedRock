@@ -16,12 +16,13 @@ M2 requires write-ahead durable ownership/original-state evidence before mutatio
 
 Prefer a minimal journal/state machine and bounded original-byte persistence. External automation mechanics must not enter BedRock runtime semantics.
 
-### Inspect Build handoff
-- Reconciled branch against unchanged main `dc5b1d872d5eb11c6f4a58f83576cc689e3342e6`; branch was 6 commits ahead and 0 behind before this slice.
-- Product commit `79cf7230ce19a3ebd9f10deb4786ac7f09cd22d2` adds durable forward-only `PREPARED -> MUTATING -> COMPLETED` journal transitions. Each transition reloads persisted state, validates journal version/run identity, and atomically rewrites through a mode-0600 synced temporary file plus rename.
-- Tests actually run in this invocation: none. This environment had repository read/write access through the GitHub connector but no executable checkout, so this commit is NOT claimed formatted, compiled, tested, or passing CI.
-- Risk: the transition implementation has not yet been gofmt/compile checked and is not wired into the actual `ChangeSet.Apply` mutation boundary.
-- Single next acceptance gap: wire journal preparation/transition ownership into the real mutation path, then add executable crash-injection/restart coverage proving interrupted-run detection and conflict-preserving recovery before Integrate considers M2.
+### Challenge Build handoff
+- Reconciled against unchanged main `dc5b1d872d5eb11c6f4a58f83576cc689e3342e6`; the branch was 8 commits ahead and 0 behind at inspected HEAD `b8f45023bc04dbdeb4aef70fe5681ad49d5e17e5`.
+- Challenged assumption: adding forward journal states alone did not yet move crash recovery across the real mutation boundary. The new transition implementation was also not gofmt-normalized and had no transition regression test, so treating it as a ready foundation would overstate its evidence.
+- Product commit `213cb39afb24a38c244940953a5db89e3387f4b9` normalizes `journal.go` to gofmt-equivalent source without changing the transition semantics. Product-test commit `53ce5dfa8f4142003c20ed99926261f33eba9946` adds persistence coverage for `PREPARED -> MUTATING -> COMPLETED` and rejects a backward transition after completion.
+- Tests actually run in this invocation: none. Repository writes were performed through the GitHub connector and no executable checkout was available, so formatting equivalence is source-inspected only and no compile/test/CI PASS is claimed.
+- Remaining acceptance gap: the journal is still not wired into `ChangeSet.Apply`; in-memory rollback remains authoritative. A naive per-attempt call to `PrepareRunJournal` with the same run ID would overwrite earlier originals when later repair attempts introduce new paths, so wiring must preserve one run's complete write-ahead ownership set rather than silently replacing it.
+- Single next action: design the smallest append-or-prepare-once mutation-boundary API that preserves originals across attempts, wire `PREPARED/MUTATING/COMPLETED` around actual writes, then add process-death/restart conflict-preservation coverage.
 
 ### Blocker-recovery protocol
 A transient environment/tool failure is a blocked invocation, not a terminal pipeline decision. If direct git/DNS fails, use the authenticated GitHub connector when available. For CI failures inspect the exact failed job/step/log before repair. Never claim PASS for checks that did not execute. Preserve branch ownership and never force-push.
