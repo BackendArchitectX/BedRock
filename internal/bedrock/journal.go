@@ -59,24 +59,10 @@ func PrepareRunJournal(root, runID string, paths []string) (RunJournal, string, 
 			return RunJournal{}, "", fmt.Errorf("duplicate journal path %q", rel)
 		}
 		seen[rel] = struct{}{}
-		original := JournalOriginal{Path: rel}
-		data, err := os.ReadFile(target)
-		if errors.Is(err, os.ErrNotExist) {
-			journal.Originals = append(journal.Originals, original)
-			continue
-		}
+		original, err := captureJournalOriginal(rel, target)
 		if err != nil {
-			return RunJournal{}, "", fmt.Errorf("read original %q: %w", rel, err)
+			return RunJournal{}, "", err
 		}
-		info, err := os.Stat(target)
-		if err != nil {
-			return RunJournal{}, "", fmt.Errorf("stat original %q: %w", rel, err)
-		}
-		sum := sha256.Sum256(data)
-		original.Existed = true
-		original.Mode = uint32(info.Mode().Perm())
-		original.SHA256 = hex.EncodeToString(sum[:])
-		original.Content = data
 		journal.Originals = append(journal.Originals, original)
 	}
 	path, err := saveRunJournal(journal)
@@ -86,10 +72,32 @@ func PrepareRunJournal(root, runID string, paths []string) (RunJournal, string, 
 	return journal, path, nil
 }
 
+func captureJournalOriginal(rel, target string) (JournalOriginal, error) {
+	original := JournalOriginal{Path: rel}
+	data, err := os.ReadFile(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return original, nil
+	}
+	if err != nil {
+		return JournalOriginal{}, fmt.Errorf("read original %q: %w", rel, err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return JournalOriginal{}, fmt.Errorf("stat original %q: %w", rel, err)
+	}
+	sum := sha256.Sum256(data)
+	original.Existed = true
+	original.Mode = uint32(info.Mode().Perm())
+	original.SHA256 = hex.EncodeToString(sum[:])
+	original.Content = data
+	return original, nil
+}
+
 // RecordMutationIntent durably records the exact content hash BedRock intends
 // to write before the write occurs. The first pre-run original is immutable;
-// repair attempts may only replace the intended hash. Recovery can therefore
-// distinguish BedRock-owned bytes from a later conflicting external edit.
+// repair attempts may only replace the intended hash. A path first introduced
+// by a later repair attempt is captured and persisted here before that attempt
+// may mutate it, so one run journal retains ownership across all attempts.
 func RecordMutationIntent(path, requested string, intended []byte) (RunJournal, error) {
 	journal, err := loadRunJournal(path)
 	if err != nil {
@@ -98,7 +106,7 @@ func RecordMutationIntent(path, requested string, intended []byte) (RunJournal, 
 	if journal.State == JournalCompleted {
 		return RunJournal{}, errors.New("cannot record mutation intent for completed journal")
 	}
-	rel, _, err := secureTarget(journal.Repository, requested)
+	rel, target, err := secureTarget(journal.Repository, requested)
 	if err != nil {
 		return RunJournal{}, err
 	}
@@ -110,7 +118,12 @@ func RecordMutationIntent(path, requested string, intended []byte) (RunJournal, 
 		}
 	}
 	if index < 0 {
-		return RunJournal{}, fmt.Errorf("mutation path %q was not prepared", rel)
+		original, err := captureJournalOriginal(rel, target)
+		if err != nil {
+			return RunJournal{}, err
+		}
+		journal.Originals = append(journal.Originals, original)
+		index = len(journal.Originals) - 1
 	}
 	sum := sha256.Sum256(intended)
 	journal.Originals[index].IntendedSHA256 = hex.EncodeToString(sum[:])
