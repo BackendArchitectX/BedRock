@@ -62,3 +62,12 @@ func TestPrepareRunJournalRejectsUnsafeAndDuplicatePaths(t *testing.T) {
 		}
 	}
 }
+
+func TestPrepareRunJournalRejectsUnsafeRunID(t *testing.T) {
+	root := t.TempDir()
+	for _, runID := range []string{"", ".", "..", "../escape", `..\\escape`, "nested/run"} {
+		if _, _, err := PrepareRunJournal(root, runID, []string{"file.txt"}); err == nil {
+			t.Fatalf("expected run id %q to be rejected", runID)
+		}
+	}
+}
