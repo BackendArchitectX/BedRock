@@ -23,11 +23,12 @@ const (
 )
 
 type JournalOriginal struct {
-	Path    string `json:"path"`
-	Existed bool   `json:"existed"`
-	Mode    uint32 `json:"mode,omitempty"`
-	SHA256  string `json:"sha256,omitempty"`
-	Content []byte `json:"content,omitempty"`
+	Path           string `json:"path"`
+	Existed        bool   `json:"existed"`
+	Mode           uint32 `json:"mode,omitempty"`
+	SHA256         string `json:"sha256,omitempty"`
+	Content        []byte `json:"content,omitempty"`
+	IntendedSHA256 string `json:"intended_sha256,omitempty"`
 }
 
 type RunJournal struct {
@@ -85,10 +86,60 @@ func PrepareRunJournal(root, runID string, paths []string) (RunJournal, string, 
 	return journal, path, nil
 }
 
+// RecordMutationIntent durably records the exact content hash BedRock intends
+// to write before the write occurs. The first pre-run original is immutable;
+// repair attempts may only replace the intended hash. Recovery can therefore
+// distinguish BedRock-owned bytes from a later conflicting external edit.
+func RecordMutationIntent(path, requested string, intended []byte) (RunJournal, error) {
+	journal, err := loadRunJournal(path)
+	if err != nil {
+		return RunJournal{}, err
+	}
+	if journal.State == JournalCompleted {
+		return RunJournal{}, errors.New("cannot record mutation intent for completed journal")
+	}
+	rel, _, err := secureTarget(journal.Repository, requested)
+	if err != nil {
+		return RunJournal{}, err
+	}
+	index := -1
+	for i := range journal.Originals {
+		if journal.Originals[i].Path == rel {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return RunJournal{}, fmt.Errorf("mutation path %q was not prepared", rel)
+	}
+	sum := sha256.Sum256(intended)
+	journal.Originals[index].IntendedSHA256 = hex.EncodeToString(sum[:])
+	if err := persistRunJournalAt(path, journal); err != nil {
+		return RunJournal{}, err
+	}
+	return journal, nil
+}
+
 // TransitionRunJournal durably advances a prepared journal through the mutation
 // boundary. Only forward transitions are accepted so a completed run cannot be
 // made to look interrupted by a later caller.
 func TransitionRunJournal(path string, next JournalState) (RunJournal, error) {
+	journal, err := loadRunJournal(path)
+	if err != nil {
+		return RunJournal{}, err
+	}
+	allowed := (journal.State == JournalPrepared && next == JournalMutating) || (journal.State == JournalMutating && next == JournalCompleted)
+	if !allowed {
+		return RunJournal{}, fmt.Errorf("invalid journal transition %s -> %s", journal.State, next)
+	}
+	journal.State = next
+	if err := persistRunJournalAt(path, journal); err != nil {
+		return RunJournal{}, err
+	}
+	return journal, nil
+}
+
+func loadRunJournal(path string) (RunJournal, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return RunJournal{}, fmt.Errorf("read run journal: %w", err)
@@ -101,14 +152,6 @@ func TransitionRunJournal(path string, next JournalState) (RunJournal, error) {
 		return RunJournal{}, fmt.Errorf("unsupported journal version %d", journal.Version)
 	}
 	if err := validateRunID(journal.RunID); err != nil {
-		return RunJournal{}, err
-	}
-	allowed := (journal.State == JournalPrepared && next == JournalMutating) || (journal.State == JournalMutating && next == JournalCompleted)
-	if !allowed {
-		return RunJournal{}, fmt.Errorf("invalid journal transition %s -> %s", journal.State, next)
-	}
-	journal.State = next
-	if err := persistRunJournalAt(path, journal); err != nil {
 		return RunJournal{}, err
 	}
 	return journal, nil
