@@ -8,9 +8,8 @@
 
 ### Accepted baseline
 
-- Pre-merge main HEAD: `2d6aace2512eced6c784754c97aae81794caaa43`.
-- Accepted milestone product/evidence HEAD: `ea1f587619604ea23aa8f339fde4df71581d3875` plus this gate-state commit.
-- `automation/bedrock-current` was ahead of main and behind by 0 before acceptance; no reconciliation conflict existed.
+- M1 accepted product/evidence HEAD: `ea1f587619604ea23aa8f339fde4df71581d3875`.
+- M1 gate commit on main: `dc5b1d872d5eb11c6f4a58f83576cc689e3342e6`.
 - M1 was accepted only after independent exact-head executable CI, semantic inspection, and diff review.
 
 ### M1 acceptance evidence
@@ -19,16 +18,7 @@ GitHub Actions CI run `35582125964` completed successfully on exact milestone HE
 
 Linux `test` passed launcher prerequisite failure safety, gofmt, `go vet ./...`, `go test ./...`, `go test -race ./...`, canonical one-step start, and CLI failure rollback smoke. Windows `windows-launcher` passed the canonical one-step start.
 
-Independent integration review confirmed that M1 materially changes persisted outcome truthfulness rather than merely renaming a status:
-
-- configured verification is captured before provider edits and after edits;
-- passing configured checks is persisted as `CHECKS_PASSED`, not as task/goal completion;
-- an already-green repository with a no-op provider remains `CHECKS_PASSED`, with zero changed paths, rather than claiming task completion;
-- provider summaries, attempts, terminal failure evidence, baseline/post verification, changed paths, and deterministic content-sensitive diff hash are persisted;
-- existing rollback/conflict-preservation behavior remains covered and green;
-- scheduler roles/cadence are not present in product runtime behavior.
-
-M1 is therefore accepted. This does not make BedRock production-ready and does not imply sandboxing or live-model maturity.
+Independent integration review confirmed that M1 materially changes persisted outcome truthfulness rather than merely renaming a status: baseline/post verification, `CHECKS_PASSED`, provider summaries, attempts, terminal failure evidence, changed paths, and deterministic content-sensitive diff hash are persisted without claiming task completion.
 
 ## M2 acceptance contract — durable run journal and crash recovery
 
@@ -44,15 +34,14 @@ M2 must not be accepted based on ordinary error-return rollback. Require all of 
 
 Prefer a minimal journal/state machine and content-addressed or otherwise bounded original-byte persistence over speculative workflow machinery. Do not import external worker/scheduler mechanics into BedRock.
 
+### Inspect Build handoff
+
+- Reconciled `automation/bedrock-current` with main `dc5b1d872d5eb11c6f4a58f83576cc689e3342e6`; they were identical before this M2 slice.
+- Product slice commits: `88dd0258d0a0f8d67debef17b03721c19f71d112` adds a repository-external, atomic write-ahead run journal that records bounded path identity, existence, mode, SHA-256 and exact original bytes in `PREPARED` state; `8053db8e4d9ce58b8bf9d87b5057ccd6dfa998ed` adds executable tests for persistence and unsafe/duplicate path rejection.
+- Verification actually executed in this invocation: none. GitHub had not surfaced an Actions run for `8053db8e4d9ce58b8bf9d87b5057ccd6dfa998ed` at inspection time, so this slice is not claimed PASS.
+- This is intentionally only the first M2 primitive. It is not yet wired into `ChangeSet.Apply`, has no `MUTATING`/`COMPLETED` transition API, and cannot yet recover an interrupted run.
+- Single next acceptance gap: wire journal preparation and durable state transitions into the mutation boundary so a process-death test can prove next-invocation detection and conflict-preserving rollback.
+
 ### Blocker-recovery protocol for all five scheduled workers
 
-A transient environment/tool failure is a blocked invocation, not a terminal pipeline decision.
-
-- If direct `git clone`, `git fetch`, or DNS resolution for `github.com` fails, do not modify product code to compensate. When an authenticated GitHub connector/API is available, use it to inspect refs, files, commits, CI, and to make only the smallest safe repository update needed.
-- For CI failures, inspect the exact failed job, step, and log first; repair only the demonstrated defect and trigger fresh executable evidence.
-- Never claim PASS for checks that did not execute.
-- Preserve branch ownership, no-force-push discipline, and truthful evidence while recovering from blockers.
-
-### One next action
-
-Inspect Build should begin M2 with the smallest durable journal capable of proving write-ahead original state and interrupted-run detection. Challenge/Verify/Red Team should prioritize real process-death injection and external-byte-conflict preservation. Integrate must keep M2 open until those crash semantics are independently executable and green.
+A transient environment/tool failure is a blocked invocation, not a terminal pipeline decision. If direct git/DNS fails, use the authenticated GitHub connector when available. For CI failures inspect the exact failed job/step/log before repair. Never claim PASS for checks that did not execute. Preserve branch ownership and never force-push.
