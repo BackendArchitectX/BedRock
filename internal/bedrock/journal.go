@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -42,8 +43,8 @@ type RunJournal struct {
 // a caller mutates repository content. The journal lives outside the repository so
 // BedRock's own recovery metadata never becomes a provider-visible repository edit.
 func PrepareRunJournal(root, runID string, paths []string) (RunJournal, string, error) {
-	if runID == "" {
-		return RunJournal{}, "", errors.New("run id is required")
+	if err := validateRunID(runID); err != nil {
+		return RunJournal{}, "", err
 	}
 	root, err := filepath.Abs(root)
 	if err != nil {
@@ -87,7 +88,20 @@ func PrepareRunJournal(root, runID string, paths []string) (RunJournal, string, 
 	return journal, path, nil
 }
 
+func validateRunID(runID string) error {
+	if runID == "" {
+		return errors.New("run id is required")
+	}
+	if runID == "." || runID == ".." || filepath.Base(runID) != runID || strings.ContainsAny(runID, `/\\`) {
+		return fmt.Errorf("unsafe run id %q", runID)
+	}
+	return nil
+}
+
 func saveRunJournal(journal RunJournal) (string, error) {
+	if err := validateRunID(journal.RunID); err != nil {
+		return "", err
+	}
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
