@@ -24,6 +24,9 @@ func recordCapturedMutationIntent(path string, original JournalOriginal, intende
 	if _, _, err := secureTarget(journal.Repository, original.Path); err != nil {
 		return RunJournal{}, err
 	}
+	if err := validateCapturedOriginal(original); err != nil {
+		return RunJournal{}, err
+	}
 
 	index := -1
 	for i := range journal.Originals {
@@ -46,4 +49,22 @@ func recordCapturedMutationIntent(path string, original JournalOriginal, intende
 		return RunJournal{}, err
 	}
 	return journal, nil
+}
+
+func validateCapturedOriginal(original JournalOriginal) error {
+	if !original.Existed {
+		if original.Mode != 0 || original.SHA256 != "" || len(original.Content) != 0 {
+			return fmt.Errorf("captured non-existent original %q contains file metadata", original.Path)
+		}
+		return nil
+	}
+	if original.SHA256 == "" {
+		return fmt.Errorf("captured original %q is missing sha256", original.Path)
+	}
+	sum := sha256.Sum256(original.Content)
+	actual := hex.EncodeToString(sum[:])
+	if original.SHA256 != actual {
+		return fmt.Errorf("captured original %q sha256 does not match content", original.Path)
+	}
+	return nil
 }
