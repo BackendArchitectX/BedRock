@@ -34,13 +34,14 @@ M2 must not be accepted based on ordinary error-return rollback. Require all of 
 
 Prefer a minimal journal/state machine and content-addressed or otherwise bounded original-byte persistence over speculative workflow machinery. Do not import external worker/scheduler mechanics into BedRock.
 
-### Inspect Build handoff
+### Challenge Build handoff
 
-- Reconciled `automation/bedrock-current` with main `dc5b1d872d5eb11c6f4a58f83576cc689e3342e6`; they were identical before this M2 slice.
-- Product slice commits: `88dd0258d0a0f8d67debef17b03721c19f71d112` adds a repository-external, atomic write-ahead run journal that records bounded path identity, existence, mode, SHA-256 and exact original bytes in `PREPARED` state; `8053db8e4d9ce58b8bf9d87b5057ccd6dfa998ed` adds executable tests for persistence and unsafe/duplicate path rejection.
-- Verification actually executed in this invocation: none. GitHub had not surfaced an Actions run for `8053db8e4d9ce58b8bf9d87b5057ccd6dfa998ed` at inspection time, so this slice is not claimed PASS.
-- This is intentionally only the first M2 primitive. It is not yet wired into `ChangeSet.Apply`, has no `MUTATING`/`COMPLETED` transition API, and cannot yet recover an interrupted run.
-- Single next acceptance gap: wire journal preparation and durable state transitions into the mutation boundary so a process-death test can prove next-invocation detection and conflict-preserving rollback.
+- Reconciled against main `dc5b1d872d5eb11c6f4a58f83576cc689e3342e6`; main remained unchanged at the final fetch. Branch product HEAD before this handoff commit: `9136c8871e087ce5afba5efe587b58407d6c721e`.
+- Challenged assumption: the new repository-external journal was safe merely because changed repository paths were validated. It was not: `RunID` was concatenated into the journal filename and temp-file pattern without validation, allowing path separators/traversal to escape the intended per-repository journal directory.
+- Changes made: `cf25b970024072b225133500f1bf794d1a691973` validates run identifiers before journal construction and again at persistence; `9136c8871e087ce5afba5efe587b58407d6c721e` adds regression coverage for empty, dot, traversal, backslash and nested run IDs. No M2 runtime architecture was added.
+- Tests actually run in this invocation: none. GitHub had not surfaced an Actions run for `9136c8871e087ce5afba5efe587b58407d6c721e` at inspection time, so this slice is not claimed PASS.
+- Remaining acceptance gap: the journal is still not wired into `ChangeSet.Apply`, has no durable `MUTATING`/`COMPLETED` transition API, and cannot detect/recover an interrupted mutation on the next invocation.
+- Single next action: wire journal preparation plus durable state transitions into the mutation boundary and add a process-death/restart test that proves conflict-preserving recovery.
 
 ### Blocker-recovery protocol for all five scheduled workers
 
