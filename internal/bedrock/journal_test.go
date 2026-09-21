@@ -91,14 +91,51 @@ func TestRecordMutationIntentPreservesOriginalAndUpdatesIntent(t *testing.T) {
 	}
 }
 
-func TestRecordMutationIntentRejectsUnpreparedAndCompleted(t *testing.T) {
+func TestRecordMutationIntentCapturesPathIntroducedByRepairAttempt(t *testing.T) {
+	root := t.TempDir()
+	_, path, err := PrepareRunJournal(root, "run-late-path", []string{"first.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TransitionRunJournal(path, JournalMutating); err != nil {
+		t.Fatal(err)
+	}
+
+	lateOriginal := []byte("user state before repair\n")
+	if err := os.WriteFile(filepath.Join(root, "late.txt"), lateOriginal, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	intended := []byte("repair writes this\n")
+	journal, err := RecordMutationIntent(path, "late.txt", intended)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(journal.Originals) != 2 {
+		t.Fatalf("original count = %d, want 2", len(journal.Originals))
+	}
+	late := journal.Originals[1]
+	if late.Path != "late.txt" || !late.Existed || !bytes.Equal(late.Content, lateOriginal) {
+		t.Fatalf("late original not captured: %#v", late)
+	}
+	sum := sha256.Sum256(intended)
+	if late.IntendedSHA256 != hex.EncodeToString(sum[:]) {
+		t.Fatalf("late intended hash = %q", late.IntendedSHA256)
+	}
+
+	persisted, err := loadRunJournal(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Originals) != 2 || !bytes.Equal(persisted.Originals[1].Content, lateOriginal) {
+		t.Fatalf("late ownership was not durable: %#v", persisted.Originals)
+	}
+}
+
+func TestRecordMutationIntentRejectsCompleted(t *testing.T) {
 	root := t.TempDir()
 	_, path, err := PrepareRunJournal(root, "run-intent-guard", []string{"file.txt"})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := RecordMutationIntent(path, "other.txt", []byte("write")); err == nil {
-		t.Fatal("expected unprepared path to be rejected")
 	}
 	if _, err := TransitionRunJournal(path, JournalMutating); err != nil {
 		t.Fatal(err)
