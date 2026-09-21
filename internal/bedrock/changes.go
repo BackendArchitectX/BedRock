@@ -182,6 +182,17 @@ func (c *ChangeSet) Apply(root string, changes []FileChange, protected map[strin
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("inspect %q: %w", rel, err)
 		}
+		parent := filepath.Dir(target)
+		parentInfo, err := os.Lstat(parent)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("refusing to create missing parent directory for %q", rel)
+			}
+			return fmt.Errorf("inspect parent for %q: %w", rel, err)
+		}
+		if parentInfo.Mode()&os.ModeSymlink != 0 || !parentInfo.IsDir() {
+			return fmt.Errorf("refusing to write through non-directory parent for %q", rel)
+		}
 		preparedChanges = append(preparedChanges, prepared{rel: rel, target: target, content: content, mode: mode})
 	}
 
@@ -200,10 +211,6 @@ func (c *ChangeSet) Apply(root string, changes []FileChange, protected map[strin
 				_ = c.Rollback(root)
 				return fmt.Errorf("backup %q: %w", p.rel, err)
 			}
-		}
-		if err := os.MkdirAll(filepath.Dir(p.target), 0o755); err != nil {
-			_ = c.Rollback(root)
-			return fmt.Errorf("create parent for %q: %w", p.rel, err)
 		}
 		if err := os.WriteFile(p.target, p.content, p.mode); err != nil {
 			_ = c.Rollback(root)
@@ -309,7 +316,7 @@ func secureTarget(root, requested string) (string, string, error) {
 			return "", "", fmt.Errorf("symlink path components are forbidden: %q", requested)
 		}
 		if i < len(parts)-1 && !info.IsDir() {
-			return "", "", fmt.Errorf("non-directory path component in %q", requested)
+			return "", "", fmt.Errorf("non-directory path component is forbidden: %q", requested)
 		}
 	}
 	return relSlash, target, nil
