@@ -16,14 +16,13 @@ M2 requires write-ahead durable ownership/original-state evidence before mutatio
 
 Prefer a minimal journal/state machine and bounded original-byte persistence. External automation mechanics must not enter BedRock runtime semantics.
 
-### Challenge Build handoff
-- Reconciled against unchanged main `dc5b1d872d5eb11c6f4a58f83576cc689e3342e6`; inspected branch HEAD was `d7925e14aa81bebbfb5c55c5f9b16cdc9c972d8e`.
-- Challenged assumption: preserving originals across repair attempts is necessary but not sufficient for crash-safe rollback. The current durable journal stores only pre-run bytes while `ChangeSet` keeps BedRock's last written bytes in memory. After process death, recovery therefore cannot distinguish "current bytes are exactly BedRock's write and may be rolled back" from "a user/process changed the path after BedRock wrote it and must be preserved." Blind rollback from originals would violate M2 conflict preservation.
-- Required design correction: before each actual write, durably preserve the path's first pre-run original exactly once and the hash of the bytes BedRock intends to write. Later attempts may update only the intended hash, never the original. Recovery may restore/remove only when current bytes match that durable intended hash; mismatch is an explicit conflict and must be preserved. This should remain a small journal/mutation-boundary protocol, not a general agent framework.
-- Product changes in this invocation: none. An attempted repository write implementing the intent-hash primitive was blocked by the execution safety layer, so no partial remote edit was left behind.
-- Tests actually run in this invocation: none. No executable checkout was available and no PASS is claimed.
-- Remaining acceptance gap: journal intent/original ownership is not wired atomically enough around `ChangeSet.Apply`; interrupted-run discovery/recovery and process-death tests are still absent.
-- Single next action: add the minimal write-ahead mutation-intent record (first original + latest intended-content hash), wire it immediately before each owned write while keeping the journal MUTATING across repair attempts, then implement restart recovery that rolls back only exact intended bytes and preserves mismatches as conflicts.
+### Inspect Build handoff
+- Reconciled against unchanged main `dc5b1d872d5eb11c6f4a58f83576cc689e3342e6`; branch was 12 commits ahead / 0 behind before this slice. Prior coordination HEAD was `15c0c474a4386d9d18bddcc88579941cbd3bd2f3`.
+- Product slice completed at `21b8d5dc19134d311e31959c71334ecf00a3f9d3`: journal entries now persist `intended_sha256`, and `RecordMutationIntent` durably updates the intended-content hash while preserving the first pre-run original. Unprepared paths and completed journals fail closed. Repair attempts may replace only the intended hash, enabling later recovery to distinguish BedRock-owned bytes from conflicting external edits.
+- Tests added: intent hash persistence, repair-attempt intent replacement without original-byte loss, rejection of unprepared paths, and rejection after COMPLETED.
+- Tests actually run in this invocation: none. No executable checkout was available; GitHub commit status for the exact product HEAD had no checks when inspected. No PASS is claimed.
+- Blockers: mutation intent is still a primitive only; `ChangeSet.Apply` does not yet invoke it immediately before each owned write, and restart recovery/crash-injection coverage is absent.
+- Single next acceptance gap: wire `RecordMutationIntent` and the MUTATING transition into the real mutation boundary, then implement restart recovery that restores/removes only when current bytes match durable intended hashes and preserves mismatches as explicit conflicts.
 
 ### Blocker-recovery protocol
 A transient environment/tool failure is a blocked invocation, not a terminal pipeline decision. If direct git/DNS fails, use the authenticated GitHub connector when available. For CI failures inspect the exact failed job/step/log before repair. Never claim PASS for checks that did not execute. Preserve branch ownership and never force-push.
