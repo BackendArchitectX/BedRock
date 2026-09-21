@@ -1,21 +1,21 @@
 # Automation Milestone Gate
 
-> Development-pipeline coordination only. This file, worker roles, and scheduler cadence are not BedRock runtime or product architecture.
+> Development-pipeline coordination only. This file, worker roles, scheduler cadence, and blocker-recovery rules are not BedRock runtime or product architecture.
 
 ## CURRENT: M1 — Truthful outcomes and evidence
 
-**Verdict:** IN PROGRESS — NOT ACCEPTED
+**Verdict:** IN PROGRESS — CI GREEN — INTEGRATE MUST ACCEPT OR REJECT
 
 ### Gate baseline
 
-- Main HEAD observed this pass: `2d6aace2512eced6c784754c97aae81794caaa43`.
+- Main HEAD: `2d6aace2512eced6c784754c97aae81794caaa43`.
 - Milestone branch: `automation/bedrock-current`.
-- Milestone implementation HEAD before this handoff update: `a6931357741de1d6484dc3c4fac64def912ec257`.
-- Main remained unchanged; comparison reported the milestone branch ahead of main and not behind.
+- Current milestone HEAD: `a22c0a11bf784746ae4a4128057a6ca2e15dc171`.
+- Branch comparison after the fixes: ahead of main by 18 commits and behind by 0.
 
 ### M1 acceptance contract
 
-M1 remains open until executable evidence demonstrates all of the following together:
+M1 remains open until Integrate independently confirms all of the following together:
 
 - configured verification is run and recorded before BedRock edits and after edits;
 - checks passing does not by itself become a task/goal-completion claim;
@@ -25,26 +25,45 @@ M1 remains open until executable evidence demonstrates all of the following toge
 - existing safe-change and rollback behavior remains intact;
 - focused behavior tests and applicable broader regression tests pass.
 
-### Challenged assumption and changes this pass
+### Blockers repaired in this recovery pass
 
-The previous repair attempt was correctly reverted because it accidentally changed the launcher prerequisite fixture from `go env GOVERSION` to `go env env`. The semantic CI repair itself is still required, but it must be isolated from prerequisite behavior.
+1. `internal/bedrock/engine_test.go` was not gofmt-clean and blocked all downstream Linux gates. It was formatted without changing intended runtime behavior in commit `4a5527ea9e799a4a4f0e9c7b35fc4be3299a3d0f`.
+2. Fresh CI then exposed a stale recovery smoke assertion in `internal/demosmoke/verification_recovery_test.go` that still expected `status: VERIFIED`. It was aligned with the truthful M1 status `CHECKS_PASSED` in commit `a22c0a11bf784746ae4a4128057a6ca2e15dc171`.
+3. The previously stale CI workflow assertions for Linux/Windows already use `CHECKS_PASSED`; the launcher prerequisite fixture remains `go env GOVERSION`.
 
-This pass changed only the three stale success assertions in `.github/workflows/ci.yml` from `status: VERIFIED` to `status: CHECKS_PASSED` (including the Windows diagnostic text). The prerequisite fixture remains exactly `if [ "$1" = env ] && [ "$2" = GOVERSION ]`; READY and result assertions remain intact. No BedRock runtime architecture was derived from the automation pipeline.
+### Fresh executable evidence
 
-### Tests actually run
+GitHub Actions CI run `35581993953` completed successfully on the current milestone head.
 
-No local Go verification could execute in this runtime. A fresh clone attempt failed before checkout because DNS resolution for `github.com` failed. Therefore this pass does **not** claim `gofmt`, `go vet ./...`, `go test ./...`, smoke, or race success.
+Linux `test` job passed all of:
+- launcher prerequisite failure safety;
+- gofmt gate;
+- `go vet ./...`;
+- `go test ./...`;
+- `go test -race ./...`;
+- canonical one-step start;
+- CLI failure rollback smoke.
 
-The prior independent CI evidence remains a failure: formatting of `internal/bedrock/engine_test.go` blocks the Linux vet/test/race/smoke sequence. The Windows launcher had reached `CHECKS_PASSED`/`READY` but failed only because CI expected the obsolete status; that assertion is now repaired on the milestone branch and requires fresh CI evidence.
+Windows `windows-launcher` job also passed the canonical one-step start.
+
+Do not reinterpret this as automatic milestone acceptance. Integrate still must inspect the M1 semantics, persisted evidence, and branch diff before merging or advancing CURRENT.
+
+### Blocker-recovery protocol for all five scheduled workers
+
+A transient environment/tool failure is a blocked invocation, not a terminal pipeline decision.
+
+- If direct `git clone`, `git fetch`, or DNS resolution for `github.com` fails, do not modify product code to compensate. When an authenticated GitHub connector/API is available, use it to inspect refs, files, commits, PR CI, job logs, and to make only the smallest safe repository update needed.
+- If one access path is unavailable but another owner-authorized repository path is available, use the available path instead of declaring the milestone permanently blocked.
+- For CI failures, inspect the exact failed job, step, and log first; repair only the demonstrated defect and trigger fresh executable evidence.
+- Never claim PASS for checks that did not execute.
+- If a write, merge, reconciliation, or verification cannot be performed safely in the current invocation, checkpoint the exact blocker and stop only that invocation. The next scheduled worker/run must retry from current shared state.
+- Do not disable, terminate, or treat the five-worker pipeline as complete because one run is blocked. Only an explicit user instruction or an intentionally configured scheduler deadline should end the recurring pipeline.
+- Preserve branch ownership, no-force-push discipline, and truthful evidence while recovering from blockers.
 
 ### Remaining M1 acceptance gap
 
-Do not merge or advance CURRENT. The concrete blocker is now narrower:
-
-1. run `gofmt` on `internal/bedrock/engine_test.go` and commit only the formatting result;
-2. require a fresh CI run to execute and pass format, vet, focused/broader tests, Linux race, canonical launcher, rollback/safety coverage, and Windows ordinary launcher execution;
-3. independently inspect that the M1 evidence contract remains truthful after those gates pass.
+The infrastructure/CI blockers are cleared. The only remaining M1 gate is independent Integrate review of the actual M1 behavior and evidence contract on current head `a22c0a11bf784746ae4a4128057a6ca2e15dc171`.
 
 ### One next action
 
-Format `internal/bedrock/engine_test.go` on `automation/bedrock-current`, push the isolated formatting commit, and use the resulting fresh PR CI run as the next Integrate gate. Do not advance to M2 before that executable evidence is green.
+Integrate should inspect the current branch diff and fresh green CI evidence. If and only if the complete M1 acceptance contract is satisfied, merge/reconcile into latest main, record M1 ACCEPTED, advance CURRENT to M2, and recreate/reset `automation/bedrock-current` from the accepted main. Otherwise record the exact semantic gap and keep M1 open.
