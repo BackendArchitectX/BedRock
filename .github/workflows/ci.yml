@@ -30,7 +30,7 @@ jobs:
           mkdir "$old_go_bin"
           cat > "$old_go_bin/go" <<'EOF'
           #!/bin/sh
-          if [ "$1" = env ] && [ "$2" = env ]; then
+          if [ "$1" = env ] && [ "$2" = GOVERSION ]; then
             printf 'go1.21.13\n'
             exit 0
           fi
@@ -80,7 +80,7 @@ jobs:
           set -euo pipefail
           BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" go run ./scripts/demo.go | tee "$RUNNER_TEMP/bedrock-demo.log"
           test "$(cat "$RUNNER_TEMP/bedrock-demo/repository/result.txt")" = good
-          grep -q '^status: CHECKS_PASSED$' "$RUNNER_TEMP/bedrock-demo.log"
+          grep -q '^status: VERIFIED$' "$RUNNER_TEMP/bedrock-demo.log"
           grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo.log"
           BEDROCK_DEMO_DIR="$RUNNER_TEMP/bedrock-demo" go run ./scripts/demo.go > "$RUNNER_TEMP/bedrock-demo-rerun.log"
           grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/bedrock-demo-rerun.log"
@@ -180,7 +180,7 @@ jobs:
           test ! -e "$provider_failure/repository/result.txt"
           grep -q 'injected fake provider failure' "$RUNNER_TEMP/provider-failure.log"
           BEDROCK_DEMO_DIR="$provider_failure" go run ./scripts/demo.go > "$RUNNER_TEMP/provider-recovery.log" 2>&1
-          grep -q '^status: CHECKS_PASSED$' "$RUNNER_TEMP/provider-recovery.log"
+          grep -q '^status: VERIFIED$' "$RUNNER_TEMP/provider-recovery.log"
           grep -q '^BedRock demo: READY$' "$RUNNER_TEMP/provider-recovery.log"
           test "$(cat "$provider_failure/user.txt")" = 'preserve me'
           test "$(cat "$provider_failure/repository/result.txt")" = good
@@ -229,7 +229,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "canonical launcher failed with exit code $LASTEXITCODE`n$($log -join "`n")" }
           $log | ForEach-Object { Write-Host $_ }
           if ((Get-Content (Join-Path $demo 'repository/result.txt') -Raw).Trim() -ne 'good') { throw 'verified result mismatch' }
-          if (-not ($log -match '^status: CHECKS_PASSED$')) { throw 'missing CHECKS_PASSED status' }
+          if (-not ($log -match '^status: VERIFIED$')) { throw 'missing VERIFIED status' }
           if (-not ($log -match '^BedRock demo: READY$')) { throw 'missing READY status' }
 
           $rerun = @(go run ./scripts/demo.go 2>&1)
