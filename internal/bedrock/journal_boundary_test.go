@@ -59,3 +59,49 @@ func TestRecordCapturedMutationIntentRequiresMutatingState(t *testing.T) {
 		t.Fatal("expected PREPARED journal to reject mutation intent")
 	}
 }
+
+func TestRecordCapturedMutationIntentRejectsContradictoryCapture(t *testing.T) {
+	root := t.TempDir()
+	_, journalPath, err := PrepareRunJournal(root, "captured-invalid", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TransitionRunJournal(journalPath, JournalMutating); err != nil {
+		t.Fatal(err)
+	}
+
+	captured := JournalOriginal{
+		Path:    "owned.txt",
+		Existed: true,
+		Mode:    0o600,
+		SHA256:  hex.EncodeToString(make([]byte, sha256.Size)),
+		Content: []byte("actual-original"),
+	}
+	if _, err := recordCapturedMutationIntent(journalPath, captured, []byte("bedrock-write")); err == nil {
+		t.Fatal("expected contradictory captured hash/content to be rejected")
+	}
+
+	journal, err := loadRunJournal(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(journal.Originals) != 0 {
+		t.Fatalf("journal gained %d originals after rejected capture", len(journal.Originals))
+	}
+}
+
+func TestRecordCapturedMutationIntentRejectsMetadataForMissingOriginal(t *testing.T) {
+	root := t.TempDir()
+	_, journalPath, err := PrepareRunJournal(root, "captured-missing-invalid", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TransitionRunJournal(journalPath, JournalMutating); err != nil {
+		t.Fatal(err)
+	}
+
+	captured := JournalOriginal{Path: "new.txt", Existed: false, Content: []byte("impossible")}
+	if _, err := recordCapturedMutationIntent(journalPath, captured, []byte("bedrock-write")); err == nil {
+		t.Fatal("expected missing original with content to be rejected")
+	}
+}
