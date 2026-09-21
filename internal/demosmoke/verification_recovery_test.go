@@ -53,8 +53,8 @@ func TestLauncherRecoversAfterVerificationFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("launcher did not recover after verification failure: %v\n%s", err, rerunOutput)
 	}
-	if !strings.Contains(string(rerunOutput), "status: VERIFIED") || !strings.Contains(string(rerunOutput), "BedRock demo: READY") {
-		t.Fatalf("recovered launcher did not reach verified readiness:\n%s", rerunOutput)
+	if !strings.Contains(string(rerunOutput), "status: CHECKS_PASSED") || !strings.Contains(string(rerunOutput), "BedRock demo: READY") {
+		t.Fatalf("recovered launcher did not reach checks-passed readiness:\n%s", rerunOutput)
 	}
 	contents, err = os.ReadFile(filepath.Join(work, "user.txt"))
 	if err != nil {
