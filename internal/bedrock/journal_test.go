@@ -2,6 +2,8 @@ package bedrock
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -51,6 +53,61 @@ func TestPrepareRunJournalPersistsOriginalsBeforeMutation(t *testing.T) {
 	}
 	if bytes.Contains(persistedBytes, []byte("after")) || !bytes.Contains(persistedBytes, original) {
 		t.Fatalf("journal changed with repository mutation: %s", persistedBytes)
+	}
+}
+
+func TestRecordMutationIntentPreservesOriginalAndUpdatesIntent(t *testing.T) {
+	root := t.TempDir()
+	original := []byte("original\n")
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), original, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	_, path, err := PrepareRunJournal(root, "run-intent", []string{"file.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := []byte("first attempt\n")
+	journal, err := RecordMutationIntent(path, "file.txt", first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstSum := sha256.Sum256(first)
+	if journal.Originals[0].IntendedSHA256 != hex.EncodeToString(firstSum[:]) {
+		t.Fatalf("first intended hash = %q", journal.Originals[0].IntendedSHA256)
+	}
+
+	second := []byte("repair attempt\n")
+	journal, err = RecordMutationIntent(path, "file.txt", second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondSum := sha256.Sum256(second)
+	if journal.Originals[0].IntendedSHA256 != hex.EncodeToString(secondSum[:]) {
+		t.Fatalf("second intended hash = %q", journal.Originals[0].IntendedSHA256)
+	}
+	if !bytes.Equal(journal.Originals[0].Content, original) {
+		t.Fatalf("repair attempt changed original: %q", journal.Originals[0].Content)
+	}
+}
+
+func TestRecordMutationIntentRejectsUnpreparedAndCompleted(t *testing.T) {
+	root := t.TempDir()
+	_, path, err := PrepareRunJournal(root, "run-intent-guard", []string{"file.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecordMutationIntent(path, "other.txt", []byte("write")); err == nil {
+		t.Fatal("expected unprepared path to be rejected")
+	}
+	if _, err := TransitionRunJournal(path, JournalMutating); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TransitionRunJournal(path, JournalCompleted); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecordMutationIntent(path, "file.txt", []byte("late")); err == nil {
+		t.Fatal("expected completed journal to reject mutation intent")
 	}
 }
 
