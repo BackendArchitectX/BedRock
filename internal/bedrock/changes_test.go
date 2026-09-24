@@ -111,6 +111,40 @@ func TestChangeSetProtectsDirtyPath(t *testing.T) {
 	}
 }
 
+func TestChangeSetRejectsMissingParentWithoutMutation(t *testing.T) {
+	root := t.TempDir()
+	set := NewChangeSet()
+	err := set.Apply(root, []FileChange{{Path: "missing/nested.txt", Content: "new"}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "missing parent directory") {
+		t.Fatalf("expected missing parent rejection, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "missing")); !os.IsNotExist(statErr) {
+		t.Fatalf("missing parent was mutated: %v", statErr)
+	}
+	if len(set.ChangedPaths()) != 0 {
+		t.Fatalf("rejected change was recorded as changed: %v", set.ChangedPaths())
+	}
+}
+
+func TestChangeSetAllowsNewFileInExistingParent(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "existing")
+	if err := os.Mkdir(parent, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	set := NewChangeSet()
+	if err := set.Apply(root, []FileChange{{Path: "existing/new.txt", Content: "new"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(parent, "new.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "new" {
+		t.Fatalf("new file content = %q", data)
+	}
+}
+
 func TestChangeSetRollbackRestoresAndRemoves(t *testing.T) {
 	root := t.TempDir()
 	existing := filepath.Join(root, "existing.txt")

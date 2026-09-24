@@ -1,0 +1,235 @@
+package bedrock
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+const journalVersion = 1
+
+type JournalState string
+
+const (
+	JournalPrepared  JournalState = "PREPARED"
+	JournalMutating  JournalState = "MUTATING"
+	JournalCompleted JournalState = "COMPLETED"
+)
+
+type JournalOriginal struct {
+	Path           string `json:"path"`
+	Existed        bool   `json:"existed"`
+	Mode           uint32 `json:"mode,omitempty"`
+	SHA256         string `json:"sha256,omitempty"`
+	Content        []byte `json:"content,omitempty"`
+	IntendedSHA256 string `json:"intended_sha256,omitempty"`
+}
+
+type RunJournal struct {
+	Version       int               `json:"version"`
+	RunID         string            `json:"run_id"`
+	Repository    string            `json:"repository"`
+	State         JournalState      `json:"state"`
+	Originals     []JournalOriginal `json:"originals"`
+	RecordedAtUTC string            `json:"recorded_at_utc"`
+}
+
+func PrepareRunJournal(root, runID string, paths []string) (RunJournal, string, error) {
+	if err := validateRunID(runID); err != nil {
+		return RunJournal{}, "", err
+	}
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return RunJournal{}, "", err
+	}
+	journal := RunJournal{Version: journalVersion, RunID: runID, Repository: root, State: JournalPrepared, RecordedAtUTC: time.Now().UTC().Format(time.RFC3339Nano)}
+	seen := map[string]struct{}{}
+	for _, requested := range paths {
+		rel, target, err := secureTarget(root, requested)
+		if err != nil {
+			return RunJournal{}, "", err
+		}
+		if _, duplicate := seen[rel]; duplicate {
+			return RunJournal{}, "", fmt.Errorf("duplicate journal path %q", rel)
+		}
+		seen[rel] = struct{}{}
+		original, err := captureJournalOriginal(rel, target)
+		if err != nil {
+			return RunJournal{}, "", err
+		}
+		journal.Originals = append(journal.Originals, original)
+	}
+	path, err := saveRunJournal(journal)
+	if err != nil {
+		return RunJournal{}, "", err
+	}
+	return journal, path, nil
+}
+
+func captureJournalOriginal(rel, target string) (JournalOriginal, error) {
+	original := JournalOriginal{Path: rel}
+	data, err := os.ReadFile(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return original, nil
+	}
+	if err != nil {
+		return JournalOriginal{}, fmt.Errorf("read original %q: %w", rel, err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return JournalOriginal{}, fmt.Errorf("stat original %q: %w", rel, err)
+	}
+	sum := sha256.Sum256(data)
+	original.Existed = true
+	original.Mode = uint32(info.Mode().Perm())
+	original.SHA256 = hex.EncodeToString(sum[:])
+	original.Content = data
+	return original, nil
+}
+
+// RecordMutationIntent durably records the exact content hash BedRock intends
+// to write before the write occurs. The journal must already be MUTATING so
+// durable state can never claim PREPARED while containing mutation ownership.
+// The first pre-run original is immutable; repair attempts may only replace the
+// intended hash. A path first introduced by a later repair attempt is captured
+// and persisted here before that attempt may mutate it.
+func RecordMutationIntent(path, requested string, intended []byte) (RunJournal, error) {
+	journal, err := loadRunJournal(path)
+	if err != nil {
+		return RunJournal{}, err
+	}
+	if journal.State != JournalMutating {
+		return RunJournal{}, fmt.Errorf("cannot record mutation intent while journal is %s", journal.State)
+	}
+	rel, target, err := secureTarget(journal.Repository, requested)
+	if err != nil {
+		return RunJournal{}, err
+	}
+	index := -1
+	for i := range journal.Originals {
+		if journal.Originals[i].Path == rel {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		original, err := captureJournalOriginal(rel, target)
+		if err != nil {
+			return RunJournal{}, err
+		}
+		journal.Originals = append(journal.Originals, original)
+		index = len(journal.Originals) - 1
+	}
+	sum := sha256.Sum256(intended)
+	journal.Originals[index].IntendedSHA256 = hex.EncodeToString(sum[:])
+	if err := persistRunJournalAt(path, journal); err != nil {
+		return RunJournal{}, err
+	}
+	return journal, nil
+}
+
+// TransitionRunJournal durably advances a prepared journal through the mutation
+// boundary. Only forward transitions are accepted so a completed run cannot be
+// made to look interrupted by a later caller.
+func TransitionRunJournal(path string, next JournalState) (RunJournal, error) {
+	journal, err := loadRunJournal(path)
+	if err != nil {
+		return RunJournal{}, err
+	}
+	allowed := (journal.State == JournalPrepared && next == JournalMutating) || (journal.State == JournalMutating && next == JournalCompleted)
+	if !allowed {
+		return RunJournal{}, fmt.Errorf("invalid journal transition %s -> %s", journal.State, next)
+	}
+	journal.State = next
+	if err := persistRunJournalAt(path, journal); err != nil {
+		return RunJournal{}, err
+	}
+	return journal, nil
+}
+
+func loadRunJournal(path string) (RunJournal, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return RunJournal{}, fmt.Errorf("read run journal: %w", err)
+	}
+	var journal RunJournal
+	if err := json.Unmarshal(data, &journal); err != nil {
+		return RunJournal{}, fmt.Errorf("decode run journal: %w", err)
+	}
+	if journal.Version != journalVersion {
+		return RunJournal{}, fmt.Errorf("unsupported journal version %d", journal.Version)
+	}
+	if err := validateRunID(journal.RunID); err != nil {
+		return RunJournal{}, err
+	}
+	return journal, nil
+}
+
+func validateRunID(runID string) error {
+	if runID == "" {
+		return errors.New("run id is required")
+	}
+	if runID == "." || runID == ".." || filepath.Base(runID) != runID || strings.ContainsAny(runID, `/\\`) {
+		return fmt.Errorf("unsafe run id %q", runID)
+	}
+	return nil
+}
+
+func saveRunJournal(journal RunJournal) (string, error) {
+	if err := validateRunID(journal.RunID); err != nil {
+		return "", err
+	}
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	repoSum := sha256.Sum256([]byte(journal.Repository))
+	dir := filepath.Join(cacheDir, "bedrock", "journals", hex.EncodeToString(repoSum[:8]))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	final := filepath.Join(dir, journal.RunID+".json")
+	if err := persistRunJournalAt(final, journal); err != nil {
+		return "", err
+	}
+	return final, nil
+}
+
+func persistRunJournalAt(final string, journal RunJournal) error {
+	data, err := json.MarshalIndent(journal, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(final)
+	tmp, err := os.CreateTemp(dir, journal.RunID+"-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, final); err != nil {
+		return err
+	}
+	return nil
+}
